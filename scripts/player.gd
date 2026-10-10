@@ -210,9 +210,9 @@ func _toggle_hook() -> void:
 		var hit := space.intersect_ray(query)
 		if hit.is_empty():
 			break
-		var collider := hit["collider"]
+		var collider: CollisionObject3D = hit["collider"] as CollisionObject3D
 		# El suelo no es un punto de agarre; se excluye y se sigue buscando.
-		if collider is CollisionObject3D and collider.name == "Suelo":
+		if collider != null and collider.name == "Suelo":
 			exclude.append(collider.get_rid())
 			continue
 		_start_hook(hit["position"], hit["normal"])
