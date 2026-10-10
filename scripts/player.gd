@@ -1,5 +1,6 @@
 extends CharacterBody3D
 ## Controlador de primera persona: correr, salto, deslizamiento y esquiva.
+signal died
 
 @onready var camera: Camera3D = $Camera3D
 @onready var status: Label = $HUD/Estado
@@ -30,6 +31,10 @@ var hook_message_time := 0.0
 var rope_mesh: ImmediateMesh
 var rope: MeshInstance3D
 var hook_piece: MeshInstance3D
+var health := 100.0
+var invulnerable := 0.0
+var damage_flash := 0.0
+var perfect_dodge_cd := 0.0
 
 func _ready() -> void:
 	_configure_input_map()
@@ -62,6 +67,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_hook()
 
 func _physics_process(delta: float) -> void:
+	invulnerable = maxf(0.0, invulnerable - delta)
+	perfect_dodge_cd = maxf(0.0, perfect_dodge_cd - delta)
+	damage_flash = maxf(0.0, damage_flash - delta * 2.0)
 	jump_buffer = maxf(jump_buffer - delta, 0.0)
 	dash_cooldown = maxf(dash_cooldown - delta, 0.0)
 	wall_jump_cooldown = maxf(wall_jump_cooldown - delta, 0.0)
@@ -144,6 +152,24 @@ func _physics_process(delta: float) -> void:
 func _movement_direction() -> Vector3:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	return (global_transform.basis * Vector3(input.x, 0.0, input.y)).normalized()
+
+func hurt(amount: float) -> void:
+	if invulnerable > 0.0: return
+	if dash_time > 0.0:
+		invulnerable = 0.4
+		if perfect_dodge_cd <= 0.0:
+			perfect_dodge_cd = 1.2
+			Engine.time_scale = 0.4
+			get_tree().create_timer(0.5, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
+			get_node("WeaponSystem").call("grant_perfect_ammo")
+			get_node("WeaponSystem").call("_say", "¡ESQUIVA PERFECTA! +1 bala")
+		else:
+			get_node("WeaponSystem").call("_say", "¡ESQUIVADO!")
+		return
+	health = maxf(0.0, health - amount)
+	invulnerable = 0.5
+	damage_flash = 1.0
+	if health <= 0.0: emit_signal("died")
 
 func _move_with_step(delta: float, was_on_floor: bool) -> void:
 	move_and_slide()

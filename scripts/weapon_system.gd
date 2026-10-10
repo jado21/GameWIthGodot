@@ -341,6 +341,10 @@ func _say(text: String, duration := 2.2) -> void:
 func _has_weapon() -> bool:
 	return owned["pistol"] or owned["shotgun"] or owned["rifle"]
 
+func grant_perfect_ammo() -> void:
+	if not equipped.is_empty():
+		ammo[equipped] = mini(ammo[equipped] + 1, DATA.WEAPONS[equipped]["max"])
+
 func _hand_position() -> Vector3:
 	return camera.global_position + camera.global_transform.basis.x * 0.28 - camera.global_transform.basis.y * 0.22 - camera.global_transform.basis.z * 0.6
 

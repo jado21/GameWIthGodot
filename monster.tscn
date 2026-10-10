@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+[ext_resource type="Script" path="res://scripts/monster.gd" id="1"]
+[sub_resource type="CapsuleShape3D" id="1"]
+radius = 1.4
+height = 5.5
+[node name="Monster" type="CharacterBody3D" groups=["monster"]]
+script = ExtResource("1")
+[node name="Collision" type="CollisionShape3D" parent="."]
+position = Vector3(0,2.75,0)
+shape = SubResource("1")
