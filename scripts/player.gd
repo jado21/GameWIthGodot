@@ -14,6 +14,9 @@ var sliding := false
 var last_tap := {}
 var bob_time := 0.0
 var camera_roll := 0.0
+var extra_jumps := 1
+var wall_jump_cooldown := 0.0
+var fov_kick := 0.0
 
 func _ready() -> void:
 	_configure_input_map()
@@ -39,6 +42,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	jump_buffer = maxf(jump_buffer - delta, 0.0)
 	dash_cooldown = maxf(dash_cooldown - delta, 0.0)
+	wall_jump_cooldown = maxf(wall_jump_cooldown - delta, 0.0)
 	var was_on_floor := is_on_floor()
 	coyote_time = Config.COYOTE if was_on_floor else maxf(coyote_time - delta, 0.0)
 	var direction := _movement_direction()
@@ -74,14 +78,25 @@ func _physics_process(delta: float) -> void:
 		var gain := clampf(Config.AIR_CAP - projected, 0.0, Config.AIR_ACC * delta)
 		horizontal += direction * gain
 
-	if jump_buffer > 0.0 and coyote_time > 0.0:
-		velocity.y = Config.JUMP
-		jump_buffer = 0.0
-		coyote_time = 0.0
-		sliding = false
-	elif not was_on_floor:
+	if was_on_floor:
+		extra_jumps = 1
+	if jump_buffer > 0.0:
+		if coyote_time > 0.0:
+			velocity.y = Config.JUMP
+			jump_buffer = 0.0
+			coyote_time = 0.0
+			sliding = false
+		elif not was_on_floor:
+			var wall_normal := _high_wall_normal()
+			if wall_jump_cooldown <= 0.0 and wall_normal != Vector3.ZERO:
+				_wall_jump(wall_normal, horizontal.length())
+				jump_buffer = 0.0
+			elif extra_jumps > 0:
+				_double_jump(direction, horizontal)
+				jump_buffer = 0.0
+	if not was_on_floor:
 		velocity.y -= Config.GRAV * delta
-	else:
+	elif velocity.y <= 0.0:
 		velocity.y = minf(velocity.y, 0.0)
 
 	velocity.x = horizontal.x
@@ -112,11 +127,48 @@ func _start_dash(direction: Vector3) -> void:
 	dash_cooldown = Config.DASH_CD
 	sliding = false
 
+func _double_jump(direction: Vector3, horizontal: Vector3) -> void:
+	velocity.y = Config.JUMP * 0.85
+	extra_jumps -= 1
+	fov_kick += 5.0
+	# Conserva parte del impulso y orienta el resto al movimiento solicitado.
+	if direction.length_squared() > 0.0:
+		var speed := maxf(horizontal.length(), 8.0)
+		var pushed := horizontal * 0.4 + direction * speed * 0.6
+		velocity.x = pushed.x
+		velocity.z = pushed.z
+
+func _wall_jump(normal: Vector3, speed: float) -> void:
+	var away := (normal + -global_transform.basis.z * 0.5).normalized()
+	var jump_speed := maxf(speed, 12.0)
+	velocity.x = away.x * jump_speed
+	velocity.z = away.z * jump_speed
+	velocity.y = Config.JUMP * 0.95
+	wall_jump_cooldown = Config.WALL_JUMP_CD
+	extra_jumps = 1
+	fov_kick += 8.0
+
+func _high_wall_normal() -> Vector3:
+	# El rayo por encima de la altura mínima descarta obstáculos bajos.
+	var space := get_world_3d().direct_space_state
+	var origin := global_position + Vector3.UP * (Config.WALL_MIN_HEIGHT + 0.01)
+	for direction in [Vector3.FORWARD, Vector3.BACK, Vector3.LEFT, Vector3.RIGHT]:
+		var query := PhysicsRayQueryParameters3D.create(origin, origin + direction * Config.WALL_CHECK_DISTANCE, 0xffffffff, [get_rid()])
+		var hit := space.intersect_ray(query)
+		if not hit.is_empty() and absf(hit.normal.y) < 0.2:
+			return hit.normal.normalized()
+	return Vector3.ZERO
+
 func _update_camera(delta: float, horizontal: Vector3) -> void:
+	var keyboard_look := Config.KEY_LOOK_SPEED * delta
+	rotate_y((Input.get_action_strength("look_left") - Input.get_action_strength("look_right")) * keyboard_look)
+	camera.rotation.x = clamp(camera.rotation.x + (Input.get_action_strength("look_up") - Input.get_action_strength("look_down")) * keyboard_look, -1.5, 1.5)
 	var speed := horizontal.length()
 	var target_fov := Config.FOV + clampf((speed - Config.WALK) / 12.0, 0.0, 1.0) * (Config.FOV_MAX - Config.FOV)
 	if dash_time > 0.0:
 		target_fov += Config.FOV_DASH
+	fov_kick = move_toward(fov_kick, 0.0, delta * Config.FOV_KICK_RECOVER)
+	target_fov += fov_kick
 	camera.fov = lerpf(camera.fov, target_fov, minf(delta * 8.0, 1.0))
 	var lateral := horizontal.dot(global_transform.basis.x) / Config.SPRINT
 	var target_roll := -clampf(lateral, -1.3, 1.3) * Config.TILT * 3.0
@@ -133,7 +185,7 @@ func _update_camera(delta: float, horizontal: Vector3) -> void:
 
 func _update_hud() -> void:
 	var state := "DODGE" if dash_time > 0.0 else "SLIDE" if sliding else "AIR" if not is_on_floor() else "RUN"
-	status.text = "%d km/h\n%s" % [round(Vector2(velocity.x, velocity.z).length() * 3.6), state]
+	status.text = "%d km/h\n%s\nSALTOS EXTRA: %d" % [round(Vector2(velocity.x, velocity.z).length() * 3.6), state, extra_jumps]
 
 func _configure_input_map() -> void:
 	_add_key("move_forward", KEY_W)
@@ -145,6 +197,10 @@ func _configure_input_map() -> void:
 	_add_key("slide", KEY_C)
 	_add_key("slide", KEY_CTRL)
 	_add_key("dash", KEY_Q)
+	_add_key("look_up", KEY_I)
+	_add_key("look_down", KEY_K)
+	_add_key("look_left", KEY_J)
+	_add_key("look_right", KEY_L)
 
 func _add_key(action: StringName, keycode: Key) -> void:
 	if not InputMap.has_action(action):

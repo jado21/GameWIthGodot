@@ -8,8 +8,11 @@ func _ready() -> void:
 	_box(Vector3(0, 3, 25), Vector3(50, 6, 1), Color("56606e"), "ParedNorte")
 	_box(Vector3(-25, 3, 0), Vector3(1, 6, 50), Color("56606e"), "ParedOeste")
 	_box(Vector3(25, 3, 0), Vector3(1, 6, 50), Color("56606e"), "ParedEste")
-	_box(Vector3(7, 1, 5), Vector3(8, 2, 7), Color("d8994d"), "PlataformaBaja")
+	_box(Vector3(7, 0.5, 5), Vector3(8, 1, 7), Color("d8994d"), "PlataformaBaja")
 	_box(Vector3(-9, 4, 7), Vector3(2, 8, 8), Color("9a5d5d"), "ParedAlta")
+	# Pilares de 8 m con sus centros a 4 m para encadenar saltos de pared.
+	_box(Vector3(-2, 4, -15), Vector3(1, 8, 3), Color("6f8fa8"), "PilarMuroOeste")
+	_box(Vector3(2, 4, -15), Vector3(1, 8, 3), Color("6f8fa8"), "PilarMuroEste")
 	_ramp(Vector3(-8, 0, -8), 8.0, 12.0, 4.0)
 
 func _add_light() -> void:
