@@ -90,9 +90,13 @@ func _physics_process(delta: float) -> void:
 			var wall_normal := _high_wall_normal()
 			if wall_jump_cooldown <= 0.0 and wall_normal != Vector3.ZERO:
 				_wall_jump(wall_normal, horizontal.length())
+				# Conserva el impulso recién calculado; no lo sustituyas por el previo.
+				horizontal = Vector3(velocity.x, 0.0, velocity.z)
 				jump_buffer = 0.0
 			elif extra_jumps > 0:
 				_double_jump(direction, horizontal)
+				# El doble salto también puede cambiar la velocidad horizontal.
+				horizontal = Vector3(velocity.x, 0.0, velocity.z)
 				jump_buffer = 0.0
 	if not was_on_floor:
 		velocity.y -= Config.GRAV * delta
