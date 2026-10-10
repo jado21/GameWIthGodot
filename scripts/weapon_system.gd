@@ -30,8 +30,10 @@ var weapon_models := {}
 var muzzle_flash: MeshInstance3D
 var flash_light: OmniLight3D
 var tracers: Array[Dictionary] = []
+var AudioManager: Node
 
 func _ready() -> void:
+	AudioManager = get_node("/root/AudioManager")
 	process_priority = 10
 	_configure_input_map()
 	_create_detector_ring()
@@ -119,6 +121,7 @@ func _start_pulse() -> void:
 	detector_cd = DATA.DET["cd"]
 	pulse_radius = 0.0
 	pulse_id += 1
+	AudioManager.play("detector_pulse")
 
 func _update_pulse(delta: float) -> void:
 	if pulse_radius < 0.0:
@@ -131,6 +134,7 @@ func _update_pulse(delta: float) -> void:
 		if item["last_pulse"] != pulse_id and player.global_position.distance_to(item["node"].global_position) <= pulse_radius:
 			item["reveal"] = DATA.DET["reveal"]
 			item["last_pulse"] = pulse_id
+			AudioManager.play("item_ping_ammo" if item["kind"] == "ammo" else "item_ping_weapon")
 	if pulse_radius > DATA.DET["range"]:
 		pulse_radius = -1.0
 		ring.visible = false
@@ -162,34 +166,42 @@ func _try_pickup() -> void:
 				if owned[weapon_id]:
 					ammo[weapon_id] = mini(ammo[weapon_id] + DATA.WEAPONS[weapon_id]["box"], DATA.WEAPONS[weapon_id]["max"])
 			_say("¡Munición recogida!")
+			AudioManager.play("pickup_ammo")
+			_vfx(item_position, Color("66ff88"), 14, 5.0)
 		else:
 			var weapon_id: String = item["kind"]
 			owned[weapon_id] = true
 			ammo[weapon_id] = mini(ammo[weapon_id] + DATA.WEAPONS[weapon_id]["start"], DATA.WEAPONS[weapon_id]["max"])
 			equipped = weapon_id
 			_say("¡%s encontrada!" % DATA.WEAPONS[weapon_id]["name"])
+			AudioManager.play("pickup_weapon")
+			_vfx(item_position, Color("ffd24a"), 16, 5.0)
 		item["node"].queue_free()
 		items.remove_at(index)
 
 func _select_weapon(weapon_id: String) -> void:
 	if owned[weapon_id]:
 		equipped = weapon_id
+		AudioManager.play("switch_weapon")
 
 func _fire() -> void:
 	if equipped.is_empty():
 		_say("No tienes arma: usa el detector (E)")
+		AudioManager.play("empty_click")
 		return
 	if fire_cd > 0.0:
 		return
 	if ammo[equipped] <= 0:
 		_say("Sin munición: busca cajas verdes con el detector (E)")
 		fire_cd = 0.4
+		AudioManager.play("empty_click")
 		return
 	var weapon: Dictionary = DATA.WEAPONS[equipped]
 	fire_cd = weapon["cd"]
 	ammo[equipped] -= 1
 	recoil = minf(0.25, recoil + weapon["kick"])
 	flash_time = 0.06
+	AudioManager.play("shot_" + equipped)
 	for pellet in range(int(weapon["pellets"])):
 		_shoot_ray(weapon["spread"], weapon["dmg"])
 
@@ -230,6 +242,7 @@ func _spawn_tracer(start: Vector3, end: Vector3) -> void:
 	tracers.append({"node": line, "life": 0.14})
 
 func _spawn_impact(position: Vector3, color: Color) -> void:
+	_vfx(position, color, 8, 6.0)
 	var spark := MeshInstance3D.new()
 	spark.top_level = true
 	spark.global_position = position
@@ -340,6 +353,10 @@ func _say(text: String, duration := 2.2) -> void:
 
 func _has_weapon() -> bool:
 	return owned["pistol"] or owned["shotgun"] or owned["rifle"]
+
+func _vfx(position: Vector3, color: Color, amount: int, speed: float) -> void:
+	var manager := get_tree().get_first_node_in_group("vfx")
+	if manager != null: manager.burst(position, color, amount, speed)
 
 func grant_perfect_ammo() -> void:
 	if not equipped.is_empty():

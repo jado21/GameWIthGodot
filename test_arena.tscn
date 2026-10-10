@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/arena_builder.gd" id="1"]
 [ext_resource type="PackedScene" path="res://player.tscn" id="2"]
 [ext_resource type="Script" path="res://scripts/game_manager.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/vfx_manager.gd" id="4"]
 
 [node name="TestArena" type="Node3D"]
 script = ExtResource("1")
@@ -13,3 +14,6 @@ rotation = Vector3(0, 3.141593, 0)
 
 [node name="GameManager" type="Node" parent="."]
 script = ExtResource("3")
+
+[node name="VFXManager" type="Node3D" parent="."]
+script = ExtResource("4")

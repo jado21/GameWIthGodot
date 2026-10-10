@@ -18,11 +18,16 @@ config/icon="res://icon.svg"
 [autoload]
 
 Config="*res://scripts/config.gd"
+AudioManager="*res://scripts/audio_manager.gd"
 
 [display]
 
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[audio]
+
+default_bus_layout="res://default_bus_layout.tres"
 
 [physics]
 

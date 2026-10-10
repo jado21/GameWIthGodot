@@ -10,7 +10,9 @@ var damage_border: Panel
 var paused_label: Label
 var finished := false
 var finish_time := 0.0
+var AudioManager: Node
 func _ready() -> void:
+	AudioManager = get_node("/root/AudioManager")
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	call_deferred("_start")
 func _start() -> void:
@@ -43,12 +45,21 @@ func _build_ui() -> void:
 	player_bar=ProgressBar.new(); player_bar.position=Vector2(16,16); player_bar.size=Vector2(200,14); player_bar.value=100; player_bar.show_percentage=false; layer.add_child(player_bar)
 	monster_bar=ProgressBar.new(); monster_bar.position=Vector2(360,14); monster_bar.size=Vector2(500,16); monster_bar.max_value=520; monster_bar.value=520; monster_bar.show_percentage=false; layer.add_child(monster_bar)
 	overhead_bar=ProgressBar.new(); overhead_bar.size=Vector2(90,8); overhead_bar.max_value=520; overhead_bar.value=520; overhead_bar.show_percentage=false; layer.add_child(overhead_bar)
-	damage_border=Panel.new(); damage_border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); var border:=StyleBoxFlat.new(); border.border_color=Color(1,0,0,.8); border.set_border_width_all(35); damage_border.add_theme_stylebox_override("panel",border); damage_border.mouse_filter=Control.MOUSE_FILTER_IGNORE; damage_border.modulate.a=0; layer.add_child(damage_border)
+	damage_border=Panel.new(); damage_border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); var border:=StyleBoxFlat.new(); border.bg_color=Color(0,0,0,0); border.border_color=Color(1,0,0,.8); border.set_border_width_all(35); damage_border.add_theme_stylebox_override("panel",border); damage_border.mouse_filter=Control.MOUSE_FILTER_IGNORE; damage_border.modulate.a=0; layer.add_child(damage_border)
 	end_label=Label.new(); end_label.set_anchors_preset(Control.PRESET_CENTER); end_label.position=Vector2(-180,-40); end_label.size=Vector2(360,80); end_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; end_label.add_theme_font_size_override("font_size",36); end_label.visible=false; layer.add_child(end_label)
 	paused_label=Label.new(); paused_label.set_anchors_preset(Control.PRESET_CENTER); paused_label.position=Vector2(-80,-20); paused_label.text="PAUSA"; paused_label.add_theme_font_size_override("font_size",32); paused_label.visible=false; layer.add_child(paused_label)
 func _message(text:String)->void: player.get_node("WeaponSystem").call("_say",text)
-func _death()->void: _finish("Has muerto")
-func _victory(_position:Vector3)->void: _finish("¡VICTORIA!")
+func _death()->void: AudioManager.play("defeat"); _finish("Has muerto")
+func _victory(position:Vector3)->void:
+	AudioManager.play("victory")
+	_vfx(position, Color("7a3fbf"), 70, 13.0)
+	_vfx(position, Color("ffe14a"), 35, 10.0)
+	_finish("¡VICTORIA!")
+
+func _vfx(position: Vector3, color: Color, amount: int, speed: float) -> void:
+	var manager := get_tree().get_first_node_in_group("vfx")
+	if manager != null:
+		manager.burst(position, color, amount, speed)
 func _finish(text:String)->void:
 	if finished:return
 	finished=true; finish_time=0; player.set_physics_process(false); end_label.text=text+"\nHaz clic o pulsa W para reintentar"; end_label.visible=true; Input.mouse_mode=Input.MOUSE_MODE_VISIBLE

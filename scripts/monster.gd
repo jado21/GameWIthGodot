@@ -17,6 +17,7 @@ var legs: Array[Node3D] = []
 var arms: Array[Node3D] = []
 var body: Node3D
 var head: Node3D
+var AudioManager: Node
 var phase := 1
 var rock_cd := 4.0
 var slam_cd := 3.0
@@ -26,6 +27,7 @@ var kick_cd := 0.0
 var eye_materials: Array[StandardMaterial3D] = []
 
 func _ready() -> void:
+	AudioManager = get_node("/root/AudioManager")
 	add_to_group("monster")
 	_build_model()
 
@@ -49,6 +51,7 @@ func take_damage(amount: float) -> void:
 func _physics_process(delta: float) -> void:
 	if player == null: return
 	time += delta; flash = maxf(0.0, flash - delta); lunge_cd = maxf(0.0, lunge_cd - delta); rock_cd=maxf(0.0,rock_cd-delta); slam_cd=maxf(0.0,slam_cd-delta); kick_cd=maxf(0.0,kick_cd-delta)
+	AudioManager.set_loop("ambient_drone", true, -24.0 + phase * 5.0)
 	var to_player := player.global_position - global_position
 	var flat := Vector3(to_player.x, 0, to_player.z)
 	var distance := flat.length()
@@ -60,19 +63,19 @@ func _physics_process(delta: float) -> void:
 	if state == "SLEEP":
 		timer -= delta
 		if timer <= 0.0:
-			state = "CHASE"; emit_signal("message", "¡El monstruo sabe dónde estás!")
+			state = "CHASE"; emit_signal("message", "¡El monstruo sabe dónde estás!"); AudioManager.play("monster_roar",0.0,global_position)
 	elif state == "ROAR":
 		velocity.x=0; velocity.z=0; timer-=delta
 		if timer<=0: state="CHASE"
 	elif state == "CHASE":
 		if distance < DATA.SWING_RANGE - 0.6 and absf(to_player.y) < 2.5:
-			state = "SWING_W"; timer = DATA.SWING_WIND
+			state = "SWING_W"; timer = DATA.SWING_WIND; AudioManager.play("monster_warn",0.0,global_position)
 		elif phase >= 3 and slam_cd<=0 and distance<22.0:
-			state="SLAM_W"; timer=.7
+			state="SLAM_W"; timer=.7; AudioManager.play("monster_warn",0.0,global_position)
 		elif phase >= 2 and rock_cd<=0 and distance>7.0:
-			state="THROW_W"; timer=.45 if phase==3 else .65
+			state="THROW_W"; timer=.45 if phase==3 else .65; AudioManager.play("monster_warn",0.0,global_position)
 		elif lunge_cd <= 0.0 and distance > 8.0 and distance < 24.0 and absf(to_player.y) < 3.0:
-			state = "LUNGE_W"; timer = DATA.LUNGE_WIND
+			state = "LUNGE_W"; timer = DATA.LUNGE_WIND; AudioManager.play("monster_warn",0.0,global_position)
 		elif distance > 2.8 and to_player.y <= DATA.CLIMB:
 			var chase_speed := DATA.SPEED2*1.12 if phase==3 else DATA.SPEED2 if phase==2 else DATA.SPEED
 			velocity.x = flat.normalized().x * chase_speed; velocity.z = flat.normalized().z * chase_speed
@@ -86,13 +89,13 @@ func _physics_process(delta: float) -> void:
 	elif state == "LUNGE_W":
 		velocity.x = 0; velocity.z = 0; timer -= delta
 		if timer <= 0.0:
-			lunge_direction = flat.normalized(); lunge_hit = false; state = "LUNGE"; timer = DATA.LUNGE_TIME
+			lunge_direction = flat.normalized(); lunge_hit = false; state = "LUNGE"; timer = DATA.LUNGE_TIME; AudioManager.play("monster_lunge",0.0,global_position)
 	elif state == "THROW_W":
 		velocity.x=0; velocity.z=0; timer-=delta
-		if timer<=0: _throw_rocks(); state="REC"; timer=.7; rock_cd=DATA.THROW_CD
+		if timer<=0: _throw_rocks(); AudioManager.play("monster_throw",0.0,global_position); state="REC"; timer=.7; rock_cd=DATA.THROW_CD
 	elif state == "SLAM_W":
 		velocity.x=0; velocity.z=0; timer-=delta
-		if timer<=0: _slam(); state="REC"; timer=.7; slam_cd=4.5
+		if timer<=0: _slam(); AudioManager.play("shockwave",0.0,global_position); state="REC"; timer=.7; slam_cd=4.5
 	elif state == "LUNGE":
 		velocity.x = lunge_direction.x * DATA.LUNGE_SPEED; velocity.z = lunge_direction.z * DATA.LUNGE_SPEED; timer -= delta
 		if not lunge_hit and distance < 2.8: player.hurt(DATA.LUNGE_DMG); lunge_hit = true
@@ -150,9 +153,13 @@ func _update_projectiles(delta:float)->void:
 		rock["life"] -= delta; rock_node.position += rock_velocity * delta; rock_node.rotation += Vector3(delta*6,delta*7,0)
 		var rock_delta: Vector3 = rock_node.position - player.global_position
 		if Vector2(rock_delta.x,rock_delta.z).length()<1.2 and absf(rock_delta.y-1.0)<1.5: player.hurt(DATA.ROCK_DMG); rock["life"]=0.0
-		if rock["life"]<=0: rock_node.queue_free(); rocks.remove_at(i)
+		if rock["life"]<=0: _vfx(rock_node.position,Color("ff7a1a"),14,7.0); rock_node.queue_free(); rocks.remove_at(i)
 	for i in range(waves.size()-1,-1,-1):
 		var wave:=waves[i]; wave["radius"]+=24.0*delta; wave["node"].scale=Vector3.ONE*wave["radius"]
 		var distance_to_wave: float = Vector2(player.global_position.x-global_position.x,player.global_position.z-global_position.z).length()
 		if not wave["hit"] and absf(distance_to_wave-wave["radius"])<1.4 and player.global_position.y<.9: player.hurt(30.0); wave["hit"]=true
 		if wave["radius"]>50: wave["node"].queue_free(); waves.remove_at(i)
+
+func _vfx(position: Vector3, color: Color, amount: int, speed: float) -> void:
+	var manager := get_tree().get_first_node_in_group("vfx")
+	if manager != null: manager.burst(position, color, amount, speed)

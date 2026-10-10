@@ -24,6 +24,9 @@ func _add_environment() -> void:
 	environment.fog_enabled = true
 	environment.fog_light_color = Color("d8e2e8")
 	environment.fog_density = 0.008
+	environment.glow_enabled = true
+	environment.glow_intensity = 0.7
+	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var world := WorldEnvironment.new()
 	world.environment = environment
 	add_child(world)
@@ -31,6 +34,7 @@ func _add_environment() -> void:
 	sun.rotation_degrees = Vector3(-55.0, -30.0, 0.0)
 	sun.light_energy = 1.0
 	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 170.0
 	add_child(sun)
 
 func _build_floor() -> void:

@@ -31,12 +31,14 @@ var hook_message_time := 0.0
 var rope_mesh: ImmediateMesh
 var rope: MeshInstance3D
 var hook_piece: MeshInstance3D
+var AudioManager: Node
 var health := 100.0
 var invulnerable := 0.0
 var damage_flash := 0.0
 var perfect_dodge_cd := 0.0
 
 func _ready() -> void:
+	AudioManager = get_node("/root/AudioManager")
 	_configure_input_map()
 	_create_hook_visual()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -65,6 +67,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_start_dash(_movement_direction())
 	if event.is_action_pressed("hook"):
 		_toggle_hook()
+	if event is InputEventKey and event.pressed and event.keycode == KEY_M:
+		AudioManager.toggle_mute()
 
 func _physics_process(delta: float) -> void:
 	invulnerable = maxf(0.0, invulnerable - delta)
@@ -83,6 +87,7 @@ func _physics_process(delta: float) -> void:
 		_update_hud()
 		return
 	var was_on_floor := is_on_floor()
+	var fall_speed := velocity.y
 	coyote_time = Config.COYOTE if was_on_floor else maxf(coyote_time - delta, 0.0)
 	var direction := _movement_direction()
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
@@ -91,6 +96,8 @@ func _physics_process(delta: float) -> void:
 
 	if not sliding and wants_slide and was_on_floor and dash_time <= 0.0 and speed >= Config.SLIDE_MIN:
 		sliding = true
+		AudioManager.play("slide_start")
+		_vfx(global_position + Vector3.UP * 0.1, Color("cfc8b8"), 10, 3.0)
 		horizontal = horizontal.normalized() * maxf(speed, minf(Config.SLIDE_BOOST, speed * 1.3))
 	if sliding and (not wants_slide or not was_on_floor or speed < Config.SLIDE_END):
 		sliding = false
@@ -122,6 +129,7 @@ func _physics_process(delta: float) -> void:
 	if jump_buffer > 0.0:
 		if coyote_time > 0.0:
 			velocity.y = Config.JUMP
+			AudioManager.play("jump")
 			jump_buffer = 0.0
 			coyote_time = 0.0
 			sliding = false
@@ -129,11 +137,13 @@ func _physics_process(delta: float) -> void:
 			var wall_normal := _high_wall_normal()
 			if wall_jump_cooldown <= 0.0 and wall_normal != Vector3.ZERO:
 				_wall_jump(wall_normal, horizontal.length())
+				AudioManager.play("wall_jump")
 				# Conserva el impulso recién calculado; no lo sustituyas por el previo.
 				horizontal = Vector3(velocity.x, 0.0, velocity.z)
 				jump_buffer = 0.0
 			elif extra_jumps > 0:
 				_double_jump(direction, horizontal)
+				AudioManager.play("double_jump")
 				# El doble salto también puede cambiar la velocidad horizontal.
 				horizontal = Vector3(velocity.x, 0.0, velocity.z)
 				jump_buffer = 0.0
@@ -145,13 +155,22 @@ func _physics_process(delta: float) -> void:
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 	_move_with_step(delta, was_on_floor)
+	if not was_on_floor and is_on_floor() and fall_speed < -6.0:
+		_vfx(global_position + Vector3.UP * 0.1, Color("cfc8b8"), 10, 4.0)
 	_update_hook_visual()
 	_update_camera(delta, Vector3(velocity.x, 0.0, velocity.z))
+	AudioManager.set_loop("slide_loop", sliding)
+	AudioManager.set_loop("wind_loop", Vector2(velocity.x, velocity.z).length() > 6.0, -12.0)
 	_update_hud()
 
 func _movement_direction() -> Vector3:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	return (global_transform.basis * Vector3(input.x, 0.0, input.y)).normalized()
+
+func _vfx(position: Vector3, color: Color, amount: int, speed: float) -> void:
+	var manager := get_tree().get_first_node_in_group("vfx")
+	if manager != null:
+		manager.burst(position, color, amount, speed)
 
 func hurt(amount: float) -> void:
 	if invulnerable > 0.0: return
@@ -200,6 +219,8 @@ func _start_dash(direction: Vector3) -> void:
 	dash_time = Config.DASH_TIME
 	dash_cooldown = Config.DASH_CD
 	sliding = false
+	AudioManager.play("dash")
+	_vfx(global_position + Vector3.UP, Color("9fe3ff"), 12, 2.0)
 
 func _double_jump(direction: Vector3, horizontal: Vector3) -> void:
 	velocity.y = Config.JUMP * 0.85
@@ -261,6 +282,7 @@ func _toggle_hook() -> void:
 	hook_message_time = 1.0
 
 func _start_hook(point: Vector3, normal: Vector3) -> void:
+	AudioManager.play("hook_fire")
 	hook_anchor = point
 	hook_target = point + normal * 1.1
 	hooked = true
@@ -295,6 +317,7 @@ func _pull_hook(delta: float) -> void:
 func _release_hook(hook_jump := false, reached_stop := false) -> void:
 	if not hooked:
 		return
+	AudioManager.play("hook_release")
 	if hook_jump:
 		velocity.y = maxf(velocity.y, 0.0) + 6.0
 		extra_jumps = 1
