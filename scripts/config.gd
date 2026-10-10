@@ -44,3 +44,5 @@ const HOOK_CD := 1.0
 const HOOK_MAX_TIME := 1.6
 const HOOK_STOP := 1.3
 const HOOK_MISS_CD := 0.3
+const STEP := 0.6
+const SNAP := 0.5

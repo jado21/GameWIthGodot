@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 @onready var camera: Camera3D = $Camera3D
 @onready var status: Label = $HUD/Estado
+@onready var zone_label: Label = $HUD/Zona
 
 var coyote_time := 0.0
 var jump_buffer := 0.0
@@ -135,7 +136,7 @@ func _physics_process(delta: float) -> void:
 
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
-	move_and_slide()
+	_move_with_step(delta, was_on_floor)
 	_update_hook_visual()
 	_update_camera(delta, Vector3(velocity.x, 0.0, velocity.z))
 	_update_hud()
@@ -143,6 +144,18 @@ func _physics_process(delta: float) -> void:
 func _movement_direction() -> Vector3:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	return (global_transform.basis * Vector3(input.x, 0.0, input.y)).normalized()
+
+func _move_with_step(delta: float, was_on_floor: bool) -> void:
+	move_and_slide()
+	if not was_on_floor or not is_on_wall() or Vector2(velocity.x, velocity.z).length_squared() == 0.0:
+		return
+	var forward := Vector3(velocity.x, 0.0, velocity.z) * delta
+	forward = forward.limit_length(Config.SNAP)
+	var raised := global_transform.translated(Vector3.UP * Config.STEP)
+	# Sube solo si el desplazamiento sobre el escalón está libre.
+	if not test_move(global_transform, Vector3.UP * Config.STEP) and not test_move(raised, forward):
+		global_transform = raised.translated(forward)
+		apply_floor_snap()
 
 func _check_double_tap(action: StringName) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
@@ -335,6 +348,20 @@ func _update_hud() -> void:
 	if hook_message_time > 0.0:
 		hook_state = hook_message
 	status.text = "%d km/h\n%s\nSALTOS EXTRA: %d\nGANCHO: %s" % [round(Vector2(velocity.x, velocity.z).length() * 3.6), state, extra_jumps, hook_state]
+	zone_label.text = _zone_name(global_position.x, global_position.z)
+
+func _zone_name(x: float, z: float) -> String:
+	if absf(x) < 16.0 and absf(z) < 16.0:
+		return "EL COLISEO"
+	if z < -26.0:
+		return "PLAZA DE INICIO"
+	if z > 26.0:
+		return "LAS RUINAS"
+	if x < -22.0:
+		return "LA FUNDICIÓN"
+	if x > 22.0:
+		return "DISTRITO DE TORRES"
+	return "PASILLO CENTRAL"
 
 func _configure_input_map() -> void:
 	_add_key("move_forward", KEY_W)
