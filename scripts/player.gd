@@ -1,0 +1,155 @@
+extends CharacterBody3D
+## Controlador de primera persona: correr, salto, deslizamiento y esquiva.
+
+@onready var camera: Camera3D = $Camera3D
+@onready var status: Label = $HUD/Estado
+
+var coyote_time := 0.0
+var jump_buffer := 0.0
+var dash_time := 0.0
+var dash_cooldown := 0.0
+var dash_direction := Vector3.ZERO
+var dash_side := 0.0
+var sliding := false
+var last_tap := {}
+var bob_time := 0.0
+var camera_roll := 0.0
+
+func _ready() -> void:
+	_configure_input_map()
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	camera.fov = Config.FOV
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		rotate_y(-event.relative.x * Config.SENS)
+		camera.rotation.x = clamp(camera.rotation.x - event.relative.y * Config.SENS, -1.5, 1.5)
+	if event.is_action_pressed("ui_cancel"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if event is InputEventMouseButton and event.pressed:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if event.is_action_pressed("jump"):
+		jump_buffer = Config.BUFFER
+	for action in ["move_forward", "move_back", "move_left", "move_right"]:
+		if event.is_action_pressed(action):
+			_check_double_tap(action)
+	if event.is_action_pressed("dash"):
+		_start_dash(_movement_direction())
+
+func _physics_process(delta: float) -> void:
+	jump_buffer = maxf(jump_buffer - delta, 0.0)
+	dash_cooldown = maxf(dash_cooldown - delta, 0.0)
+	var was_on_floor := is_on_floor()
+	coyote_time = Config.COYOTE if was_on_floor else maxf(coyote_time - delta, 0.0)
+	var direction := _movement_direction()
+	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
+	var speed := horizontal.length()
+	var wants_slide := Input.is_action_pressed("slide")
+
+	if not sliding and wants_slide and was_on_floor and dash_time <= 0.0 and speed >= Config.SLIDE_MIN:
+		sliding = true
+		horizontal = horizontal.normalized() * maxf(speed, minf(Config.SLIDE_BOOST, speed * 1.3))
+	if sliding and (not wants_slide or not was_on_floor or speed < Config.SLIDE_END):
+		sliding = false
+
+	if dash_time > 0.0:
+		dash_time -= delta
+		horizontal = dash_direction * (Config.DASH_SPEED if dash_time > 0.0 else Config.DASH_END)
+	elif sliding:
+		horizontal = horizontal.move_toward(Vector3.ZERO, Config.SLIDE_FRIC * delta)
+		horizontal += direction * Config.SLIDE_STEER * delta
+		# La componente de la gravedad paralela a la pendiente da impulso cuesta abajo.
+		if was_on_floor:
+			var downhill := Vector3.DOWN.slide(get_floor_normal()).normalized()
+			horizontal += downhill * Config.SLIDE_SLOPE * delta
+	elif was_on_floor:
+		var target_speed := Config.SPRINT if Input.is_action_pressed("sprint") else Config.WALK
+		var target := direction * target_speed
+		var rate := Config.GROUND_ACC if direction.length_squared() > 0.0 else Config.GROUND_FRIC
+		if horizontal.length() > Config.SPRINT + 0.5:
+			rate = Config.OVER_DECEL
+		horizontal = horizontal.move_toward(target, rate * delta)
+	elif direction.length_squared() > 0.0:
+		var projected := horizontal.dot(direction)
+		var gain := clampf(Config.AIR_CAP - projected, 0.0, Config.AIR_ACC * delta)
+		horizontal += direction * gain
+
+	if jump_buffer > 0.0 and coyote_time > 0.0:
+		velocity.y = Config.JUMP
+		jump_buffer = 0.0
+		coyote_time = 0.0
+		sliding = false
+	elif not was_on_floor:
+		velocity.y -= Config.GRAV * delta
+	else:
+		velocity.y = minf(velocity.y, 0.0)
+
+	velocity.x = horizontal.x
+	velocity.z = horizontal.z
+	move_and_slide()
+	_update_camera(delta, Vector3(velocity.x, 0.0, velocity.z))
+	_update_hud()
+
+func _movement_direction() -> Vector3:
+	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	return (global_transform.basis * Vector3(input.x, 0.0, input.y)).normalized()
+
+func _check_double_tap(action: StringName) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if last_tap.has(action) and now - last_tap[action] <= Config.DOUBLE_TAP:
+		var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+		_start_dash((global_transform.basis * Vector3(input.x, 0.0, input.y)).normalized())
+	last_tap[action] = now
+
+func _start_dash(direction: Vector3) -> void:
+	if dash_cooldown > 0.0 or dash_time > 0.0:
+		return
+	if direction.length_squared() == 0.0:
+		direction = -global_transform.basis.z
+	dash_direction = direction.normalized()
+	dash_side = dash_direction.dot(global_transform.basis.x)
+	dash_time = Config.DASH_TIME
+	dash_cooldown = Config.DASH_CD
+	sliding = false
+
+func _update_camera(delta: float, horizontal: Vector3) -> void:
+	var speed := horizontal.length()
+	var target_fov := Config.FOV + clampf((speed - Config.WALK) / 12.0, 0.0, 1.0) * (Config.FOV_MAX - Config.FOV)
+	if dash_time > 0.0:
+		target_fov += Config.FOV_DASH
+	camera.fov = lerpf(camera.fov, target_fov, minf(delta * 8.0, 1.0))
+	var lateral := horizontal.dot(global_transform.basis.x) / Config.SPRINT
+	var target_roll := -clampf(lateral, -1.3, 1.3) * Config.TILT * 3.0
+	if dash_time > 0.0:
+		target_roll -= dash_side * Config.DASH_TILT
+	camera_roll = lerpf(camera_roll, target_roll, minf(delta * 10.0, 1.0))
+	camera.rotation.z = camera_roll
+	var target_eye := Config.EYE_SLIDE if sliding else Config.EYE
+	var bob := 0.0
+	if is_on_floor() and not sliding and speed > 1.0:
+		bob_time += speed * delta * 0.9
+		bob = sin(bob_time * 2.0) * Config.BOB * minf(speed / Config.SPRINT, 1.0)
+	camera.position.y = lerpf(camera.position.y, target_eye + bob, minf(delta * 10.0, 1.0))
+
+func _update_hud() -> void:
+	var state := "DODGE" if dash_time > 0.0 else "SLIDE" if sliding else "AIR" if not is_on_floor() else "RUN"
+	status.text = "%d km/h\n%s" % [round(Vector2(velocity.x, velocity.z).length() * 3.6), state]
+
+func _configure_input_map() -> void:
+	_add_key("move_forward", KEY_W)
+	_add_key("move_back", KEY_S)
+	_add_key("move_left", KEY_A)
+	_add_key("move_right", KEY_D)
+	_add_key("sprint", KEY_SHIFT)
+	_add_key("jump", KEY_SPACE)
+	_add_key("slide", KEY_C)
+	_add_key("slide", KEY_CTRL)
+	_add_key("dash", KEY_Q)
+
+func _add_key(action: StringName, keycode: Key) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	if not InputMap.action_has_event(action, event):
+		InputMap.action_add_event(action, event)
