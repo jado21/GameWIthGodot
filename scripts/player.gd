@@ -17,9 +17,22 @@ var camera_roll := 0.0
 var extra_jumps := 1
 var wall_jump_cooldown := 0.0
 var fov_kick := 0.0
+var hooked := false
+var hook_cooldown := 0.0
+var hook_time := 0.0
+var hook_best_distance := INF
+var hook_stuck_time := 0.0
+var hook_target := Vector3.ZERO
+var hook_anchor := Vector3.ZERO
+var hook_message := ""
+var hook_message_time := 0.0
+var rope_mesh: ImmediateMesh
+var rope: MeshInstance3D
+var hook_piece: MeshInstance3D
 
 func _ready() -> void:
 	_configure_input_map()
+	_create_hook_visual()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	camera.fov = Config.FOV
 
@@ -31,18 +44,35 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if event is InputEventMouseButton and event.pressed:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			_toggle_hook()
+			return
 	if event.is_action_pressed("jump"):
-		jump_buffer = Config.BUFFER
+		if hooked:
+			_release_hook(true)
+		else:
+			jump_buffer = Config.BUFFER
 	for action in ["move_forward", "move_back", "move_left", "move_right"]:
 		if event.is_action_pressed(action):
 			_check_double_tap(action)
 	if event.is_action_pressed("dash"):
 		_start_dash(_movement_direction())
+	if event.is_action_pressed("hook"):
+		_toggle_hook()
 
 func _physics_process(delta: float) -> void:
 	jump_buffer = maxf(jump_buffer - delta, 0.0)
 	dash_cooldown = maxf(dash_cooldown - delta, 0.0)
 	wall_jump_cooldown = maxf(wall_jump_cooldown - delta, 0.0)
+	hook_cooldown = maxf(hook_cooldown - delta, 0.0)
+	hook_message_time = maxf(hook_message_time - delta, 0.0)
+	if hooked:
+		_pull_hook(delta)
+		move_and_slide()
+		_update_hook_visual()
+		_update_camera(delta, Vector3(velocity.x, 0.0, velocity.z))
+		_update_hud()
+		return
 	var was_on_floor := is_on_floor()
 	coyote_time = Config.COYOTE if was_on_floor else maxf(coyote_time - delta, 0.0)
 	var direction := _movement_direction()
@@ -106,6 +136,7 @@ func _physics_process(delta: float) -> void:
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 	move_and_slide()
+	_update_hook_visual()
 	_update_camera(delta, Vector3(velocity.x, 0.0, velocity.z))
 	_update_hud()
 
@@ -163,6 +194,117 @@ func _high_wall_normal() -> Vector3:
 			return hit.normal.normalized()
 	return Vector3.ZERO
 
+func _toggle_hook() -> void:
+	if hooked:
+		_release_hook()
+		return
+	if hook_cooldown > 0.0:
+		return
+	var viewport_center := camera.get_viewport().get_visible_rect().size * 0.5
+	var ray_origin := camera.project_ray_origin(viewport_center)
+	var ray_end := ray_origin + camera.project_ray_normal(viewport_center) * Config.HOOK_RANGE
+	var exclude := [get_rid()]
+	var space := get_world_3d().direct_space_state
+	for _attempt in range(4):
+		var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end, 0xffffffff, exclude)
+		var hit := space.intersect_ray(query)
+		if hit.is_empty():
+			break
+		var collider := hit["collider"]
+		# El suelo no es un punto de agarre; se excluye y se sigue buscando.
+		if collider is CollisionObject3D and collider.name == "Suelo":
+			exclude.append(collider.get_rid())
+			continue
+		_start_hook(hit["position"], hit["normal"])
+		return
+	hook_cooldown = Config.HOOK_MISS_CD
+	hook_message = "Sin punto de agarre"
+	hook_message_time = 1.0
+
+func _start_hook(point: Vector3, normal: Vector3) -> void:
+	hook_anchor = point
+	hook_target = point + normal * 1.1
+	hooked = true
+	hook_time = 0.0
+	hook_best_distance = INF
+	hook_stuck_time = 0.0
+	dash_time = 0.0
+	sliding = false
+	velocity.y = maxf(velocity.y, 3.0)
+	fov_kick += 6.0
+	hook_piece.global_position = hook_anchor
+	hook_piece.visible = true
+
+func _pull_hook(delta: float) -> void:
+	var body_center := global_position + Vector3.UP * 0.9
+	var to_target := hook_target - body_center
+	var distance := to_target.length()
+	hook_time += delta
+	if distance > hook_best_distance - 0.04:
+		hook_stuck_time += delta
+	else:
+		hook_best_distance = distance
+		hook_stuck_time = 0.0
+	if distance < Config.HOOK_STOP:
+		_release_hook(false, true)
+	elif hook_time > Config.HOOK_MAX_TIME or hook_stuck_time > 0.4:
+		_release_hook()
+	else:
+		var desired_velocity := to_target.normalized() * Config.HOOK_SPEED
+		velocity = velocity.lerp(desired_velocity, minf(1.0, delta * Config.HOOK_ACC))
+
+func _release_hook(hook_jump := false, reached_stop := false) -> void:
+	if not hooked:
+		return
+	if hook_jump:
+		velocity.y = maxf(velocity.y, 0.0) + 6.0
+		extra_jumps = 1
+	elif reached_stop:
+		velocity.y *= 0.55
+		velocity.x *= 0.6
+		velocity.z *= 0.6
+	hooked = false
+	hook_cooldown = Config.HOOK_CD
+	hook_piece.visible = false
+	rope.visible = false
+
+func _create_hook_visual() -> void:
+	rope_mesh = ImmediateMesh.new()
+	rope = MeshInstance3D.new()
+	rope.name = "CuerdaGancho"
+	rope.mesh = rope_mesh
+	rope.top_level = true
+	rope.visible = false
+	var rope_material := StandardMaterial3D.new()
+	rope_material.albedo_color = Color.WHITE
+	rope_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rope.material_override = rope_material
+	add_child(rope)
+	hook_piece = MeshInstance3D.new()
+	hook_piece.name = "PiezaGancho"
+	hook_piece.mesh = SphereMesh.new()
+	hook_piece.top_level = true
+	hook_piece.scale = Vector3.ONE * 0.16
+	hook_piece.visible = false
+	var piece_material := StandardMaterial3D.new()
+	piece_material.albedo_color = Color.WHITE
+	piece_material.emission_enabled = true
+	piece_material.emission = Color.WHITE
+	hook_piece.material_override = piece_material
+	add_child(hook_piece)
+
+func _update_hook_visual() -> void:
+	if not hooked:
+		rope.visible = false
+		return
+	var hand := camera.global_position + camera.global_transform.basis.x * 0.28 - camera.global_transform.basis.y * 0.22 - camera.global_transform.basis.z * 0.6
+	rope_mesh.clear_surfaces()
+	rope_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	rope_mesh.surface_add_vertex(hand)
+	rope_mesh.surface_add_vertex(hook_anchor)
+	rope_mesh.surface_end()
+	rope.visible = true
+
 func _update_camera(delta: float, horizontal: Vector3) -> void:
 	var keyboard_look := Config.KEY_LOOK_SPEED * delta
 	rotate_y((Input.get_action_strength("look_left") - Input.get_action_strength("look_right")) * keyboard_look)
@@ -189,7 +331,10 @@ func _update_camera(delta: float, horizontal: Vector3) -> void:
 
 func _update_hud() -> void:
 	var state := "DODGE" if dash_time > 0.0 else "SLIDE" if sliding else "AIR" if not is_on_floor() else "RUN"
-	status.text = "%d km/h\n%s\nSALTOS EXTRA: %d" % [round(Vector2(velocity.x, velocity.z).length() * 3.6), state, extra_jumps]
+	var hook_state := "ENGANCHADO" if hooked else "LISTO" if hook_cooldown <= 0.0 else "%.1f s" % hook_cooldown
+	if hook_message_time > 0.0:
+		hook_state = hook_message
+	status.text = "%d km/h\n%s\nSALTOS EXTRA: %d\nGANCHO: %s" % [round(Vector2(velocity.x, velocity.z).length() * 3.6), state, extra_jumps, hook_state]
 
 func _configure_input_map() -> void:
 	_add_key("move_forward", KEY_W)
@@ -201,6 +346,7 @@ func _configure_input_map() -> void:
 	_add_key("slide", KEY_C)
 	_add_key("slide", KEY_CTRL)
 	_add_key("dash", KEY_Q)
+	_add_key("hook", KEY_R)
 	_add_key("look_up", KEY_I)
 	_add_key("look_down", KEY_K)
 	_add_key("look_left", KEY_J)

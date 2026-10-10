@@ -13,6 +13,7 @@ func _ready() -> void:
 	# Pilares de 8 m con sus centros a 4 m para encadenar saltos de pared.
 	_box(Vector3(-2, 4, -15), Vector3(1, 8, 3), Color("6f8fa8"), "PilarMuroOeste")
 	_box(Vector3(2, 4, -15), Vector3(1, 8, 3), Color("6f8fa8"), "PilarMuroEste")
+	_box(Vector3(14, 8, -10), Vector3(5, 16, 5), Color("7d6ab0"), "TorreGancho")
 	_ramp(Vector3(-8, 0, -8), 8.0, 12.0, 4.0)
 
 func _add_light() -> void:
