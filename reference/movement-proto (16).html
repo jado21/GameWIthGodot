@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Movement Prototype</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{margin:0;height:100%;overflow:hidden;background:#bcd3e6;color:#fff;font-family:system-ui,Arial,sans-serif}
+canvas{position:fixed;inset:0;display:block;z-index:0}
+#hud,#x,#wp,#msg,#hurt,#hpb,#mhp,#mbar,#dbg,#zone{z-index:5}#ov{z-index:10}   /* el HUD debe ir por encima del canvas 3D */
+#hud{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));font-weight:800;text-shadow:0 2px 0 rgba(0,0,0,.5);pointer-events:none}
+#hud b{font-size:42px;display:block;line-height:1}
+#hud span{font-size:20px;letter-spacing:2px}
+#cd{width:120px;height:6px;background:rgba(0,0,0,.4);margin-top:6px;border-radius:3px;overflow:hidden}
+#cd i{display:block;height:100%;width:100%;background:#7df}
+#x{position:fixed;left:50%;top:50%;width:22px;height:22px;margin:-11px;border-radius:50%;border:2px solid rgba(255,255,255,.9);box-sizing:border-box;box-shadow:0 0 0 1px #000,inset 0 0 0 1px #000;pointer-events:none}#x::after{content:"";position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px #000}#x.hit{border-color:#ff3b3b}#x.hit::after{background:#ff3b3b}
+#ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,25,40,.65);text-align:center;cursor:pointer;padding:20px}
+#ov div{max-width:480px;line-height:1.7;font-size:16px}#ov h1{margin:0 0 10px;font-size:36px}
+</style></head><body>
+<div id="x" style="display:none"></div>
+<div id="dbg" style="display:none;position:fixed;top:8px;left:8px;font:12px monospace;color:#fff;background:rgba(0,0,0,.55);padding:4px 8px;pointer-events:none">cargando…</div>
+<div id="hud"><b id="sp">0</b><span id="st">RUN</span><div id="cd"><i id="cdi"></i></div></div>
+<div id="vig" style="position:fixed;inset:0;pointer-events:none;z-index:4;box-shadow:inset 0 0 170px rgba(0,0,0,.4)"></div>
+<div id="slow" style="position:fixed;inset:0;pointer-events:none;box-shadow:inset 0 0 120px 30px rgba(80,180,255,.7);opacity:0;z-index:5;transition:opacity .15s"></div>
+<div id="hurt" style="position:fixed;inset:0;pointer-events:none;box-shadow:inset 0 0 150px 40px rgba(255,0,0,.8);opacity:0"></div>
+<div id="hpb" style="position:fixed;top:calc(16px + env(safe-area-inset-top,0px));left:16px;width:200px;height:14px;background:rgba(0,0,0,.55);border:2px solid #fff;border-radius:10px;overflow:hidden;pointer-events:none"><i id="hpi" style="display:block;height:100%;width:100%;background:#4ade80"></i></div>
+<div id="mhp" style="position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:30%;right:30%;height:16px;background:rgba(0,0,0,.55);border:2px solid #fff;border-radius:10px;overflow:hidden;pointer-events:none"><i id="mhi" style="display:block;height:100%;width:100%;background:#ff4455"></i><b style="position:absolute;left:50%;top:0;bottom:0;width:2px;background:#fff"></b></div>
+<div id="mbar" style="display:none;position:fixed;width:90px;height:8px;margin:-8px 0 0 -45px;background:rgba(0,0,0,.6);border:1px solid #fff;border-radius:6px;overflow:hidden;pointer-events:none"><i id="mbi" style="display:block;height:100%;width:100%;background:#ff4455"></i></div>
+<div id="zone" style="position:fixed;top:calc(40px + env(safe-area-inset-top,0px));left:16px;font-weight:800;font-size:14px;letter-spacing:2px;text-shadow:0 2px 0 rgba(0,0,0,.6);pointer-events:none"></div>
+<div id="wp" style="position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));text-align:right;font-weight:800;font-size:18px;line-height:1.5;text-shadow:0 2px 0 rgba(0,0,0,.5);pointer-events:none"></div>
+<div id="msg" style="position:fixed;top:22%;left:0;right:0;text-align:center;font-weight:900;font-size:28px;text-shadow:0 3px 0 rgba(0,0,0,.55);pointer-events:none;opacity:0"></div>
+<div id="ov"><div><h1>Movement Prototype</h1>
+<b>Click para jugar</b> (Esc o P para pausar y recuperar el mouse)<br><i>Si el mouse no se captura: arrastra con el clic para mirar y usa F para disparar.</i><br>
+<b>WASD</b> mover · <b>Shift</b> sprint · <b>Espacio</b> saltar<br>
+<b>C / Ctrl</b> deslizarse (corriendo, y mejor en pendientes)<br>
+<b>Q</b> o doble toque de WASD: esquiva<br><b>E</b> detector de metal (revela armas ocultas) · <b>Click</b> o <b>F</b> disparar · <b>1/2/3</b> cambiar arma<br>Munición limitada: las cajas verdes (se ven con el detector E) recargan.<br><b>Espacio en el aire</b>: doble salto · junto a una pared alta: salto en pared<br>Deslízate a través del monstruo: patada deslizante · <b>I J K L</b>: mirar con el teclado (I arriba, K abajo, J izquierda, L derecha)<br><b>R</b> o <b>clic derecho</b>: gancho (suéltalo con Espacio) · Esquiva justo antes del golpe: esquiva perfecta · <b>M</b> silenciar<br>Empiezas sin armas: encuéntralas. Un monstruo despertará pronto: esquívalo (Q) justo cuando su ataque brille en rojo.</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ================= CONSTANTES AJUSTABLES =================
+const CFG={
+ WALK:8, SPRINT:13,                 // velocidades en suelo (m/s)
+ GROUND_ACC:70, GROUND_FRIC:55,     // aceleración / frenado en suelo
+ OVER_DECEL:12,                     // frenado suave cuando vas más rápido que el sprint
+ AIR_ACC:40, AIR_CAP:8,             // control en el aire
+ GRAV:30, JUMP:10,                  // salto
+ COYOTE:.12, BUFFER:.12,            // tolerancia de salto (s)
+ SLIDE_MIN:8, SLIDE_BOOST:17, SLIDE_FRIC:5, SLIDE_STEER:7, SLIDE_SLOPE:34, SLIDE_END:4.5,
+ DASH_SPEED:26, DASH_TIME:.17, DASH_CD:.7, DASH_END:15, DOUBLE_TAP:.25,
+ FOV:78, FOV_MAX:102, FOV_DASH:10, // cámara
+ TILT:.045, DASH_TILT:.1, BOB:.045, EYE:1.65, EYE_SLIDE:.85, SENS:.0022,
+ STEP:.6, SNAP:.5, R:.4             // colisión: escalón máx, ajuste al suelo, radio
+};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), $=id=>document.getElementById(id);
+addEventListener('error',e=>{$('dbg').textContent='ERROR: '+e.message;});
+
+// ================= ESCENA =================
+const R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));R.setSize(innerWidth,innerHeight);R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;document.body.appendChild(R.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xbcd3e6);scene.fog=new THREE.Fog(0xd8e2e8,50,170);
+const cam=new THREE.PerspectiveCamera(CFG.FOV,innerWidth/innerHeight,.05,300);cam.rotation.order='YXZ';
+scene.add(new THREE.HemisphereLight(0xffffff,0x778899,.7));
+const sun=new THREE.DirectionalLight(0xfff2dd,.9);sun.position.set(40,90,30);scene.add(sun);
+sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.0004;   // sombras suaves sobre toda la arena
+Object.assign(sun.shadow.camera,{left:-75,right:75,top:75,bottom:-75,near:1,far:220});sun.shadow.camera.updateProjectionMatrix();
+addEventListener('resize',()=>{R.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();});
+
+// ================= ARENA (gray-box) =================
+const boxes=[],ramps=[],solids=[];
+const M=c=>new THREE.MeshLambertMaterial({color:c});
+function outline(m){m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry),new THREE.LineBasicMaterial({color:0x222a33})));}
+function box(x,z,w,d,h,c){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.position.set(x,h/2,z);m.castShadow=m.receiveShadow=true;outline(m);scene.add(m);solids.push(m);boxes.push({x,z,w,d,h});}
+// rampa: sube hacia +z local; rot = giro en Y (0, PI/2, PI, -PI/2)
+function ramp(x,z,w,l,h,rot,c){const a=[-w/2,0,-l/2],b=[w/2,0,-l/2],cc=[w/2,0,l/2],d=[-w/2,0,l/2],e=[-w/2,h,l/2],f=[w/2,h,l/2];
+ const V=[a,b,cc,d,e,f],I=[0,1,5, 0,5,4, 3,2,5, 3,5,4, 0,3,4, 1,2,5];
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(V.flat(),3));g.setIndex(I);g.computeVertexNormals();
+ const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:c,side:THREE.DoubleSide}));m.position.set(x,0,z);m.rotation.y=rot;m.castShadow=m.receiveShadow=true;outline(m);scene.add(m);solids.push(m);
+ ramps.push({x,z,w,l,h,c:Math.cos(rot),s:Math.sin(rot)});}
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(104,104),M(0x9aa3ad));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);solids.push(floor);
+const grid=new THREE.GridHelper(100,50,0x6f7882,0x838d97);grid.position.y=.02;scene.add(grid);
+const WALL=0x5a6472,PLAT=0xe0a458,RMP=0x58b09c,COV=0xc96a6a;
+box(0,-50.5,102,1,10,WALL);box(0,50.5,102,1,10,WALL);box(-50.5,0,1,102,10,WALL);box(50.5,0,1,102,10,WALL);
+        // plataforma central
+                              // torre
+             // saltos
+                                                            // pendiente larga (para deslizar)
+               // pilares
+// ================= ARENA FINAL: 5 zonas con identidad =================
+function patch(x0,x1,z0,z1,c){const m=new THREE.Mesh(new THREE.PlaneGeometry(x1-x0,z1-z0),new THREE.MeshLambertMaterial({color:c,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));m.rotation.x=-Math.PI/2;m.position.set((x0+x1)/2,.01,(z0+z1)/2);m.receiveShadow=true;scene.add(m);}
+patch(-50,50,-50,-26,0x8d97a4);patch(-50,-22,-24,24,0xa9774f);patch(22,50,-24,24,0x5a9aa0);patch(-16,16,-16,16,0xd9c27c);patch(-50,50,26,50,0x7fa56e);   // suelo de cada zona
+const FW=0x7a4a2e,FP=0xd98e3b,FR=0xc9722f,TW=0x2f6f7a,TP=0x4fb3bf,TR=0x8ee3ef,CP=0xe6c25a,CR=0xf2d98a,CK=0x8a6d1a,RW=0x56704c,RC=0x86a374;
+
+// ZONA 1 · PLAZA DE INICIO (sur, gris): coberturas bajas, pilares para saltos en pared y dos rampas de lanzamiento
+box(-12,-41,6,1,1.2,COV);box(12,-41,6,1,1.2,COV);box(0,-32,1,6,1.2,COV);
+for(const [x,z] of [[-22,-31],[22,-31],[-44,-31],[44,-31]])box(x,z,3,3,6,WALL);
+ramp(-34,-42,8,14,3,0,RMP);ramp(34,-42,8,14,3,0,RMP);
+
+// ZONA 2 · LA FUNDICIÓN (oeste, óxido): pasillo largo con bajada para deslizarse, cajas altas (doble salto) y dos escondites
+box(-40,0,1,30,5,FW);box(-30,0,1,30,5,FW);                       // paredes del pasillo
+box(-35,12,9,6,3,FP);ramp(-35,21,8.5,12,3,Math.PI,FR);          // plataforma de salida + rampa de subida desde el norte
+ramp(-35,0,8.5,18,3,0,FR);                                      // la gran bajada: sube corriendo, deslízate hacia el sur
+box(-47,-8,6,1,4,FW);box(-47,-14,6,1,4,FW);                     // escondite SO (pistola)
+box(-47,14,6,1,4,FW);box(-47,22,6,1,4,FW);                      // escondite NO (munición)
+for(const [x,z] of [[-26,-8],[-27,6],[-24,16],[-45,-20]])box(x,z,2,2,2.2,FP);
+box(-24,-18,3,3,8,FW);
+
+// ZONA 3 · DISTRITO DE TORRES (este, azul): bosque de pilares para saltos en pared, plataforma media y torre alta
+for(const [x,z] of [[26,-18],[33,-18],[40,-18],[26,-10],[33,-10]])box(x,z,3,3,8,TW);
+box(32,14,8,8,4.5,TP);ramp(32,4,6,12,4.5,0,TR);
+box(42,14,8,8,9,TP);ramp(42,1,6,18,9,0,TR);
+
+// ZONA 4 · EL COLISEO (centro, dorado): plataforma con cuatro rampas y columnas en las esquinas
+box(0,0,16,16,3,CP);ramp(0,-13,8,10,3,0,CR);ramp(0,13,8,10,3,Math.PI,CR);ramp(13,0,8,10,3,-Math.PI/2,CR);ramp(-13,0,8,10,3,Math.PI/2,CR);
+for(const [x,z] of [[-10,-10],[10,-10],[-10,10],[10,10]])box(x,z,2,2,6,CK);
+
+// ZONA 5 · LAS RUINAS (norte, verde): dos salas con entrada lateral, columnas y un claro central (aquí aparece el monstruo)
+box(-34,30,16,1.5,4,RW);box(-26,40,1.5,20,4,RW);box(34,30,16,1.5,4,RW);box(26,40,1.5,20,4,RW);
+box(-36,40,3,3,4,RW);box(36,40,3,3,4,RW);
+box(-9,38,1,6,1.2,RC);box(9,38,1,6,1.2,RC);box(0,29,8,1,1.2,RC);box(-14,46,2,2,6,RW);box(14,46,2,2,6,RW);
+
+// nombre de la zona en pantalla
+function zoneName(x,z){if(Math.abs(x)<16&&Math.abs(z)<16)return 'EL COLISEO';if(z<-26)return 'PLAZA DE INICIO';if(z>26)return 'LAS RUINAS';if(x<-22)return 'LA FUNDICIÓN';if(x>22)return 'DISTRITO DE TORRES';return 'PASILLO CENTRAL';}
+let curZone='';function updZone(){const n=zoneName(P.x,P.z);if(n!==curZone){curZone=n;$('zone').textContent='◆ '+n;}}
+
+// ================= SONIDO (generado por código con Web Audio, sin archivos) =================
+const Snd=(()=>{let c=null,out=null,lp=null,wind=null,slideN=null,droneG=null,noiseBuf=null,muted=false,stepT=0,stompT=0;
+ const ok=()=>c&&!muted;
+ function init(){if(c){if(c.state==='suspended')c.resume();return;}
+  try{c=new(window.AudioContext||window.webkitAudioContext)();}catch(e){c=null;return;}
+  out=c.createGain();out.gain.value=.5;lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=18000;out.connect(lp);lp.connect(c.destination);
+  noiseBuf=c.createBuffer(1,c.sampleRate*2,c.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+  const loop=(type,f)=>{const s=c.createBufferSource();s.buffer=noiseBuf;s.loop=true;const fl=c.createBiquadFilter();fl.type=type;fl.frequency.value=f;const g=c.createGain();g.gain.value=0;s.connect(fl);fl.connect(g);g.connect(out);s.start();return{g,fl};};
+  wind=loop('bandpass',600);slideN=loop('highpass',1800);                      // viento (según velocidad) y roce del deslizamiento
+  droneG=c.createGain();droneG.gain.value=0;droneG.connect(out);
+  for(const f of[55,82.6]){const o=c.createOscillator();o.type='sine';o.frequency.value=f;o.connect(droneG);o.start();}}   // zumbido ambiente grave
+ function dest(n,pan){if(pan&&c.createStereoPanner){const p=c.createStereoPanner();p.pan.value=Math.max(-1,Math.min(1,pan));n.connect(p);p.connect(out);}else n.connect(out);}
+ function tone(f,d,type='sine',v=.3,f2=null,pan=0,delay=0){if(!ok())return;const t=c.currentTime+delay,o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.setValueAtTime(f,t);
+  if(f2)o.frequency.exponentialRampToValueAtTime(Math.max(20,f2),t+d);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);dest(g,pan);o.start(t);o.stop(t+d+.05);}
+ function noise(d,v=.3,f=1000,f2=null,type='lowpass',pan=0){if(!ok())return;const t=c.currentTime,s=c.createBufferSource();s.buffer=noiseBuf;const fl=c.createBiquadFilter();fl.type=type;fl.frequency.setValueAtTime(f,t);
+  if(f2)fl.frequency.exponentialRampToValueAtTime(Math.max(20,f2),t+d);const g=c.createGain();g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);s.connect(fl);fl.connect(g);dest(g,pan);s.start(t,Math.random()*1.5,d+.05);}
+ function spat(x,z){const dx=x-P.x,dz=z-P.z,d=Math.hypot(dx,dz);return{v:Math.max(.1,1-d/60),pan:d>.5?(dx*Math.cos(yaw)-dz*Math.sin(yaw))/d:0};}   // volumen y paneo según dónde está
+ function frame(dt){if(!c||!active||over)return;const now=c.currentTime,spd=Math.hypot(vx,vz),m=muted?0:1;
+  lp.frequency.setTargetAtTime(slowT>0?500:18000,now,.05);                                    // en cámara lenta el sonido se apaga
+  wind.g.gain.setTargetAtTime(m*Math.min(.22,Math.max(0,(spd-6)/40)),now,.1);wind.fl.frequency.setTargetAtTime(400+spd*30,now,.1);
+  slideN.g.gain.setTargetAtTime(m*(sliding?.14:0),now,.05);
+  droneG.gain.setTargetAtTime(m*(mon.alive&&mon.ph2?.1:.05),now,.5);
+  if(grounded&&!sliding&&dashT<=0&&spd>3){stepT-=dt;if(stepT<=0){stepT=clamp(2.6/spd,.2,.5);noise(.07,.18,900,300);}}else stepT=0;   // pasos
+  if(mon.alive&&(mon.state==='CHASE'||mon.state==='LUNGE')){stompT-=dt;if(stompT<=0){stompT=mon.ph2?.32:.42;const s=spat(mon.x,mon.z);tone(70,.18,'sine',.5*s.v,35,s.pan);noise(.1,.25*s.v,300,100,'lowpass',s.pan);}}}   // pasos del monstruo
+ function silence(){if(!c)return;const n=c.currentTime;for(const g of[wind.g,slideN.g,droneG])g.gain?g.gain.setTargetAtTime(0,n,.05):0;}
+ function chord(fs,type,v,gap){fs.forEach((f,i)=>tone(f,.25,type,v,null,0,i*gap));}
+ return{init,frame,silence,
+  toggle(){muted=!muted;say('Sonido: '+(muted?'NO':'SÍ'));if(muted)silence();},
+  jump(){tone(220,.12,'square',.07,440);},djump(){tone(330,.14,'square',.07,660);},wall(){noise(.1,.15,2000,800,'bandpass');tone(300,.12,'triangle',.1,500);},
+  land(v){if(v>4){noise(.12,Math.min(.4,v*.02),500,150);tone(90,.12,'sine',.2,50);}},
+  dash(){noise(.25,.25,500,3000,'bandpass');},slideStart(){noise(.2,.2,2500,800,'highpass');},
+  shot(w){if(w==='shotgun'){noise(.3,.7,2200,200);tone(120,.25,'sawtooth',.25,40);}else if(w==='rifle'){noise(.05,.3,4000,800);tone(380,.06,'square',.1,150);}else{noise(.08,.4,3000,500);tone(500,.1,'square',.12,120);}},
+  click(){tone(900,.03,'square',.08);},pulse(){tone(300,.7,'sine',.2,1400);tone(600,.7,'sine',.07,2800,0,.05);},
+  ping(t){tone(t==='ammo'?1200:1600,.35,'sine',.1);tone(t==='ammo'?1800:2400,.3,'sine',.05,null,0,.1);},
+  pickup(ammo){chord(ammo?[700,900]:[500,750,1000],'triangle',.2,.09);},switch(){tone(400,.06,'square',.06,600);noise(.05,.1,3000,1000,'highpass');},
+  hit(){tone(1000,.04,'sine',.12,500);},roar(big){tone(90,.9,'sawtooth',.35,45);tone(95,.9,'square',.15,40);noise(.9,.3,600,150);if(big)tone(60,1.2,'sawtooth',.3,30,0,.2);},
+  end(win){chord(win?[523,659,784,1047]:[400,300,220,150],win?'triangle':'sawtooth',.2,.16);},
+  hurt(){noise(.2,.5,800,200);tone(120,.25,'sine',.4,50);},perfect(){tone(900,.5,'sine',.2,150);tone(1350,.5,'triangle',.1,225);},
+  dodge(){tone(700,.12,'triangle',.1,1000);},
+  warn(){const s=spat(mon.x,mon.z);tone(140,.12,'sawtooth',.2*s.v+.05,null,s.pan);tone(140,.12,'sawtooth',.2*s.v+.05,null,s.pan,.16);},   // aviso antes de cada ataque
+  lunge(){noise(.4,.4,300,1500,'bandpass');tone(80,.4,'sawtooth',.2,160);},swing(){noise(.18,.35,800,2500,'bandpass');},
+  throwSnd(){tone(200,.3,'sawtooth',.25,500);noise(.3,.2,1000,2000,'bandpass');},
+  boom(x,z){const s=spat(x,z);noise(.3,.5*s.v,900,100,'lowpass',s.pan);tone(100,.25,'sine',.3*s.v,40,s.pan);},
+  kick(){noise(.15,.4,1500,300);tone(150,.15,'square',.2,60);},
+  hook(){noise(.12,.3,3000,800,'highpass');tone(700,.12,'square',.08,1600);tone(200,.1,'sine',.25,100,0,.1);},unhook(){tone(500,.08,'triangle',.1,300);}};})();
+
+// ================= DETECTOR DE METAL Y ARMAS =================
+const DET={SPEED:45,RANGE:70,CD:4,REVEAL:7,PROX:9,PICK:1.8};   // velocidad/alcance del pulso, cooldown, tiempo visible, radio de brillo cercano, radio de recogida
+const WEAPONS={                                                   // cd=cadencia(s), pellets=proyectiles, spread=dispersión, kick=retroceso
+ pistol:{name:'PISTOLA',cd:.28,pellets:1,spread:0,auto:false,kick:.02,dmg:14,start:14,max:45,box:8},
+ shotgun:{name:'ESCOPETA',cd:.85,pellets:8,spread:.12,auto:false,kick:.07,dmg:11,start:4,max:12,box:3},
+ rifle:{name:'RIFLE',cd:.09,pellets:1,spread:.012,auto:true,kick:.012,dmg:7,start:28,max:90,box:18}};   // start=munición inicial, max=tope, box=lo que da una caja
+const owned={},ammo={};
+let weapon=null,shootCd=0,firing=false,pulseCd=0,pulseR=-1,msgT=5,recoil=0;
+$('msg').textContent='Pulsa E para detectar metal';
+const items=[];
+function addItem(x,y,z,type){const mat=new THREE.MeshBasicMaterial({color:type==='ammo'?0x66ff88:0xffd24a,transparent:true,opacity:0,depthTest:false,fog:false});
+ const g=new THREE.Group(),o=new THREE.Mesh(new THREE.OctahedronGeometry(.5),mat),b=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,9,6),mat);
+ b.position.y=4.5;o.renderOrder=b.renderOrder=10;g.add(o,b);g.position.set(x,y,z);g.visible=false;scene.add(g);
+ items.push({x,y,z,type,g,mat,reveal:0,hit:false,got:false});}
+addItem(-47.5,1,-11,'pistol');addItem(0,4,0,'shotgun');addItem(42,10,14,'rifle');   // pistola: escondite de la Fundición · escopeta: centro del Coliseo · rifle: cima de la torre
+for(const [x,y,z] of [[-46,1,-46],[46,1,-46],[-35,4,12],[-47.5,1,18],[32,5.5,14],[46,1,-5],[4,4,-4],[-46,1,46],[46,1,46],[-30,1,34]])addItem(x,y,z,'ammo');   // cajas de munición (verdes)   // escondidas: tras cobertura, plataforma central, torre
+const ring=new THREE.Mesh(new THREE.RingGeometry(.97,1,64),new THREE.MeshBasicMaterial({color:0x44ddff,transparent:true,opacity:0,side:THREE.DoubleSide,depthTest:false,fog:false}));
+ring.rotation.x=-Math.PI/2;ring.renderOrder=9;ring.visible=false;scene.add(ring);
+function say(t){msgT=2.2;$('msg').textContent=t;}
+function pulse(){if(pulseCd>0||pulseR>=0)return;pulseCd=DET.CD;pulseR=0;Snd.pulse();items.forEach(i=>i.hit=false);}
+function fire(){if(!weapon){say('No tienes arma: usa el detector (E)');return;}if(shootCd>0)return;if(!(ammo[weapon]>0)){say('Sin munición: busca cajas verdes con el detector (E)');shootCd=.4;Snd.click();return;}const w=WEAPONS[weapon];shootCd=w.cd;ammo[weapon]--;Snd.shot(weapon);muzT=.06;
+ for(let i=0;i<w.pellets;i++)shootRay(w.spread,w.dmg);recoil=Math.min(.25,recoil+w.kick);}
+function gear(dt){
+ shootCd=Math.max(0,shootCd-dt);pulseCd=Math.max(0,pulseCd-dt);msgT-=dt;$('msg').style.opacity=clamp(msgT,0,1);
+ if(firing&&weapon&&WEAPONS[weapon].auto)fire();
+ if(pulseR>=0){pulseR+=DET.SPEED*dt;ring.visible=true;ring.position.set(P.x,P.y+.1,P.z);ring.scale.setScalar(Math.max(.01,pulseR));ring.material.opacity=Math.max(0,.9*(1-pulseR/DET.RANGE));
+  for(const it of items)if(!it.got&&!it.hit&&Math.hypot(it.x-P.x,it.y-P.y,it.z-P.z)<=pulseR){it.hit=true;it.reveal=DET.REVEAL;Snd.ping(it.type);}
+  if(pulseR>DET.RANGE){pulseR=-1;ring.visible=false;}}
+ for(const it of items){if(it.got)continue;it.reveal=Math.max(0,it.reveal-dt);
+  const d=Math.hypot(it.x-P.x,it.y-(P.y+1),it.z-P.z),a=Math.max(clamp(it.reveal/DET.REVEAL,0,1),clamp(1-d/DET.PROX,0,1)*.9);   // brillo: pulso o cercanía
+  it.g.visible=a>.02;it.mat.opacity=a;it.g.rotation.y+=dt*2;
+  if(Math.hypot(it.x-P.x,it.z-P.z)<DET.PICK&&Math.abs(it.y-(P.y+1))<2.5&&(it.type!=='ammo'||Object.values(owned).some(Boolean))){it.got=true;it.g.visible=false;
+  if(it.type==='ammo'){for(const k in owned)if(owned[k])ammo[k]=Math.min(WEAPONS[k].max,ammo[k]+WEAPONS[k].box);say('¡Munición recogida!');Snd.pickup(true);burst(it.x,it.y,it.z,0x66ff88,14,5);}
+  else{const w=WEAPONS[it.type];owned[it.type]=true;ammo[it.type]=Math.min(w.max,(ammo[it.type]||0)+w.start);weapon=it.type;Snd.pickup(false);burst(it.x,it.y,it.z,0xffd24a,16,5);say('¡'+w.name+' encontrada!');}}}
+ $('x').style.display=weapon?'block':'none';   // mira solo cuando tienes arma
+ $('wp').innerHTML=(Object.keys(WEAPONS).map((k,i)=>owned[k]?(k===weapon?'▶ ':'')+(i+1)+' '+WEAPONS[k].name+' · '+ammo[k]:'').filter(Boolean).join('<br>')||'SIN ARMA')+'<br>DETECTOR [E]: '+(pulseCd>0?pulseCd.toFixed(1)+'s':'LISTO')+'<br>GANCHO [R]: '+(hook.on?'ENGANCHADO':hook.cd>0?hook.cd.toFixed(1)+'s':'LISTO');}
+
+// ================= MONSTRUO Y VIDA DEL JUGADOR =================
+const MON={HP:520,SPEED:8,SPEED2:11,WAKE:2,ROCK_SPEED:28,ROCK_DMG:17,THROW_CD:2.8,SWING_RANGE:4,SWING_DMG:26,SWING_WIND:.45,LUNGE_SPEED:28,LUNGE_TIME:.5,LUNGE_WIND:.55,LUNGE_DMG:36,LUNGE_CD:4,REC:.85,CLIMB:1.3};
+let php=100,over=false,overAt=0,hurtV=0,iT=0,dashLast=-9,timeScale=1,slowT=0,pdCd=0,kickAt=-9;
+const ovHTML=$('ov').innerHTML,bodyMat=new THREE.MeshLambertMaterial({color:0x7a3fbf});
+const mon={g:new THREE.Group(),x:0,y:0,z:38,yaw:0,hp:MON.HP,alive:true,state:'SLEEP',t:0,cd:3,sleep:MON.WAKE,flash:0,lx:0,lz:1,hitDone:false,ph2:false,ph3:false,slamCd:3,tcd:4,stuck:0,side:1};
+const mm=(geo,col,x,y,z,m)=>{const o=new THREE.Mesh(geo,m||new THREE.MeshLambertMaterial({color:col}));o.position.set(x,y,z);mon.g.add(o);};
+mm(new THREE.BoxGeometry(3,3,2.2),0,0,2.6,0,bodyMat);mm(new THREE.BoxGeometry(1.8,1.6,1.6),0,0,4.8,.8,bodyMat);          // cuerpo y cabeza
+mm(new THREE.BoxGeometry(.5,.4,.3),0xffe14a,-.5,5,1.65);mm(new THREE.BoxGeometry(.5,.4,.3),0xffe14a,.5,5,1.65);            // ojos
+mm(new THREE.ConeGeometry(.35,1.2,5),0xe8e0c8,-.7,6,.8);mm(new THREE.ConeGeometry(.35,1.2,5),0xe8e0c8,.7,6,.8);            // cuernos
+mm(new THREE.BoxGeometry(1,1.8,1),0x4a2680,-.9,.9,0);mm(new THREE.BoxGeometry(1,1.8,1),0x4a2680,.9,.9,0);                  // patas
+mm(new THREE.BoxGeometry(.8,.8,2.4),0x4a2680,-2,3,1);mm(new THREE.BoxGeometry(.8,.8,2.4),0x4a2680,2,3,1);                  // brazos
+mon.g.position.set(mon.x,0,mon.z);scene.add(mon.g);mon.g.traverse(o=>{o.castShadow=true;});
+function bars(){const p=(mon.hp/MON.HP*100)+'%';$('hpi').style.width=php+'%';$('mhi').style.width=p;$('mbi').style.width=p;}
+function hurtMon(d){if(!mon.alive)return 0;mon.hp-=d;mon.flash=1;if(mon.state==='SLEEP')mon.sleep=0;
+ $('x').classList.add('hit');Snd.hit();setTimeout(()=>$('x').classList.remove('hit'),90);          // marcador de impacto en la mira
+ if(!mon.ph2&&mon.hp<=MON.HP/2&&mon.hp>0){mon.ph2=true;mon.state='ROAR';mon.t=1.2;mon.tcd=2;bodyMat.color.setHex(0xd8452a);say('¡EL MONSTRUO SE ENFURECE!');Snd.roar(true);}
+ if(mon.ph2&&!mon.ph3&&mon.hp<=MON.HP*.25&&mon.hp>0){mon.ph3=true;mon.state='ROAR';mon.t=1;mon.slamCd=1.2;mon.tcd=.8;bodyMat.color.setHex(0x9a1818);say('¡FURIA FINAL!');Snd.roar(true);}   // fase 3
+ if(mon.hp<=0){mon.hp=0;mon.alive=false;mon.g.visible=false;burst(mon.x,mon.y+3,mon.z,0x7a3fbf,70,13);burst(mon.x,mon.y+3,mon.z,0xffe14a,35,10);bars();endGame(true);}else bars();return 1;}
+function hurtPlayer(d){if(iT>0)return;
+ if(dashT>0||T-dashLast<.18){iT=.4;   // la esquiva da invulnerabilidad
+  if(pdCd<=0){pdCd=1.2;slowT=.5;Snd.perfect();if(weapon&&ammo[weapon]<WEAPONS[weapon].max)ammo[weapon]++;say(weapon?'¡ESQUIVA PERFECTA! +1 bala':'¡ESQUIVA PERFECTA!');}   // cámara lenta + bala
+  else{say('¡ESQUIVADO!');Snd.dodge();}return;}      // la esquiva da invulnerabilidad
+ php=Math.max(0,php-d);hurtV=1;iT=.5;Snd.hurt();bars();if(php<=0)endGame(false);}
+function endGame(win){over=true;Snd.end(win);overAt=performance.now();pause();
+ $('ov').innerHTML='<div><h1>'+(win?'¡VICTORIA! 🏆':'Has muerto 💀')+'</h1>'+(win?'Derrotaste al monstruo.':'El monstruo te alcanzó.')+'<br>Haz clic o pulsa <b>W</b> para reintentar.</div>';}
+function resetGame(){hookRelease();over=false;slowT=0;timeScale=1;$('ov').innerHTML=ovHTML;php=100;hurtV=0;iT=0;
+ Object.assign(mon,{x:0,z:38,y:0,hp:MON.HP,alive:true,state:'SLEEP',sleep:MON.WAKE,cd:3,t:0,flash:0});mon.g.visible=true;bodyMat.color.setHex(0x7a3fbf);rocks.forEach(r=>scene.remove(r.m));rocks.length=0;mon.ph2=false;mon.ph3=false;mon.slamCd=3;mon.tcd=4;mon.stuck=0;waves.forEach(wv=>scene.remove(wv.m));waves.length=0;for(const k in owned){owned[k]=false;ammo[k]=0;}
+ P.x=0;P.y=0;P.z=-38;vx=vz=vy=0;yaw=Math.PI;pitch=0;sliding=false;dashT=0;weapon=null;items.forEach(i=>{i.got=false;i.reveal=0;});bars();}
+function moveMon(dx,dz){let ok=false;const nx=mon.x+dx;if(groundAt(nx,mon.z,1.4)-mon.y<=MON.CLIMB){mon.x=nx;if(Math.abs(dx)>1e-6)ok=true;}
+ const nz=mon.z+dz;if(groundAt(mon.x,nz,1.4)-mon.y<=MON.CLIMB){mon.z=nz;if(Math.abs(dz)>1e-6)ok=true;}mon.y=groundAt(mon.x,mon.z,.2);return ok;}
+const rocks=[];
+const waves=[];   // onda de choque de la fase 3: salta o esquiva cuando te alcance
+function slam(){const m=new THREE.Mesh(new THREE.RingGeometry(.93,1,56),new THREE.MeshBasicMaterial({color:0xff8a1a,side:THREE.DoubleSide,transparent:true,opacity:.85}));m.rotation.x=-Math.PI/2;m.position.set(mon.x,mon.y+.15,mon.z);scene.add(m);
+ waves.push({m,x:mon.x,z:mon.z,r:1,hit:false});Snd.boom(mon.x,mon.z);burst(mon.x,mon.y+.3,mon.z,0xffaa33,20,9);}
+function waveUpdate(dt){for(let i=waves.length-1;i>=0;i--){const wv=waves[i];wv.r+=24*dt;wv.m.scale.setScalar(wv.r);wv.m.material.opacity=Math.max(0,.85*(1-wv.r/50));
+  if(!wv.hit&&Math.abs(Math.hypot(P.x-wv.x,P.z-wv.z)-wv.r)<1.4&&P.y-groundAt(P.x,P.z,.2)<.9){wv.hit=true;hurtPlayer(30);}
+  if(wv.r>50){scene.remove(wv.m);waves.splice(i,1);}}}   // proyectiles de la fase 2
+function throwRocks(d){const sy=mon.y+5.2,t=Math.max(.2,d/MON.ROCK_SPEED),tx=P.x+vx*t*.6,tz=P.z+vz*t*.6,ty=P.y+1;
+ for(const a of(mon.ph3?[-.4,-.2,0,.2,.4]:[-.2,0,.2])){let ux=tx-mon.x,uz=tz-mon.z;const l=Math.hypot(ux,uz)||1,c=Math.cos(a),s=Math.sin(a);ux/=l;uz/=l;const rx=ux*c-uz*s,rz=ux*s+uz*c;
+  const m=new THREE.Mesh(new THREE.IcosahedronGeometry(.7),new THREE.MeshBasicMaterial({color:0xff7a1a}));m.position.set(mon.x+rx*2,sy,mon.z+rz*2);scene.add(m);
+  rocks.push({m,vx:rx*MON.ROCK_SPEED,vz:rz*MON.ROCK_SPEED,vy:(ty-sy)/t,life:4});}}
+function monster(dt){
+ iT=Math.max(0,iT-dt);if(dashT>0)dashLast=T;hurtV=Math.max(0,hurtV-dt*2);$('hurt').style.opacity=hurtV;waveUpdate(dt);
+ for(let i=rocks.length-1;i>=0;i--){const r=rocks[i],p=r.m.position;p.x+=r.vx*dt;p.y+=r.vy*dt;p.z+=r.vz*dt;r.life-=dt;r.m.rotation.x+=dt*6;
+  let kill=r.life<=0||p.y<.2||groundAt(p.x,p.z,.2)>p.y-.4;
+  if(Math.hypot(p.x-P.x,p.z-P.z)<1.2&&Math.abs(p.y-(P.y+1))<1.5){hurtPlayer(MON.ROCK_DMG);kill=true;}
+  if(kill){Snd.boom(p.x,p.z);burst(p.x,p.y,p.z,0xff7a1a,12,6);scene.remove(r.m);rocks.splice(i,1);}}
+ {const b=$('mbar');if(mon.alive){const v=new THREE.Vector3(mon.x,mon.y+7.2,mon.z).project(cam);   // barra de vida sobre su cabeza
+  if(v.z<1&&Math.abs(v.x)<1.1){b.style.display='block';b.style.left=((v.x*.5+.5)*innerWidth)+'px';b.style.top=((-v.y*.5+.5)*innerHeight)+'px';}else b.style.display='none';}else b.style.display='none';}
+ if(!mon.alive)return;
+ const dx=P.x-mon.x,dz=P.z-mon.z,d=Math.hypot(dx,dz)||1,face=Math.atan2(dx,dz);
+ mon.flash=Math.max(0,mon.flash-dt*5);mon.cd-=dt;mon.t-=dt;
+ if(sliding&&d<3.4&&Math.abs(P.y-mon.y)<3&&T-kickAt>.9){kickAt=T;hurtMon(30);Snd.kick();say('¡PATADA DESLIZANTE!');}   // deslizarte a través del monstruo le hace daño
+ if(mon.state==='SLEEP'){mon.sleep-=dt;if(mon.sleep<=0){mon.state='CHASE';say('¡El monstruo sabe dónde estás!');Snd.roar(false);}}
+ else if(mon.state==='CHASE'){mon.yaw=face;{const sp=(mon.ph3?MON.SPEED2*1.12:mon.ph2?MON.SPEED2:MON.SPEED)*dt,ux=dx/d,uz=dz/d;
+  if(d>2.8){if(!moveMon(ux*sp,uz*sp)){mon.stuck+=dt;moveMon(-uz*mon.side*sp,ux*mon.side*sp);if(mon.stuck>.8){mon.side*=-1;mon.stuck=0;}}else mon.stuck=Math.max(0,mon.stuck-dt);}}   // rodea obstáculos si se atasca
+  mon.tcd-=dt;mon.slamCd-=dt;if(mon.ph3&&mon.slamCd<=0&&d<22){mon.state='SLAM_W';mon.t=.7;Snd.warn();}else if(mon.ph2&&mon.tcd<=0&&d>7){mon.state='THROW_W';mon.t=mon.ph3?.45:.65;Snd.warn();}
+  if(mon.state==='THROW_W'||mon.state==='SLAM_W'){}
+  else if(d<MON.SWING_RANGE-.6){mon.state='SWING_W';mon.t=mon.ph2?.4:MON.SWING_WIND;Snd.warn();}
+  else if(mon.cd<=0&&d>8&&d<24){mon.state='LUNGE_W';mon.t=MON.LUNGE_WIND;Snd.warn();}}                  // zarpazo cercano / embestida a media distancia
+ else if(mon.state==='SWING_W'){mon.yaw=face;if(mon.t<=0){if(d<MON.SWING_RANGE)hurtPlayer(MON.SWING_DMG);Snd.swing();mon.state='REC';mon.t=.6;}}
+ else if(mon.state==='LUNGE_W'){mon.yaw=face;if(mon.t<=0){mon.lx=dx/d;mon.lz=dz/d;mon.state='LUNGE';mon.t=MON.LUNGE_TIME;mon.hitDone=false;Snd.lunge();}}
+ else if(mon.state==='LUNGE'){moveMon(mon.lx*MON.LUNGE_SPEED*dt,mon.lz*MON.LUNGE_SPEED*dt);
+  if(!mon.hitDone&&d<2.8){hurtPlayer(MON.LUNGE_DMG);mon.hitDone=true;}
+  if(mon.t<=0){mon.state='REC';mon.t=mon.ph2?.7:MON.REC;mon.cd=mon.ph2?3:MON.LUNGE_CD;}}
+ else if(mon.state==='THROW_W'){mon.yaw=face;if(mon.t<=0){Snd.throwSnd();throwRocks(d);mon.state='REC';mon.t=.7;mon.tcd=MON.THROW_CD;}}
+ else if(mon.state==='SLAM_W'){mon.yaw=face;if(mon.t<=0){slam();mon.state='REC';mon.t=.7;mon.slamCd=4.5;}}
+ else if(mon.state==='ROAR'){if(mon.t<=0)mon.state='CHASE';}
+ else if(mon.state==='REC'){if(mon.t<=0)mon.state='CHASE';}
+ const tele=mon.state==='SWING_W'||mon.state==='LUNGE_W'||mon.state==='THROW_W'||mon.state==='SLAM_W';                                    // aviso rojo antes de atacar
+ if(tele){const k=.6+.4*Math.sin(T*35);bodyMat.emissive.setRGB(k,0,0);}else bodyMat.emissive.setRGB(mon.flash*.8,mon.flash*.8,mon.flash*.8);
+ mon.g.position.set(mon.x,mon.y,mon.z);mon.g.rotation.y=mon.yaw;animMon(dt);mon.g.scale.setScalar(mon.state==='ROAR'?1+.1*Math.sin(T*40):1);mon.g.scale.y*=mon.state==='REC'?.9:1;}
+bars();
+
+// ================= ASPECTO VISUAL: cielo, partículas, arma en primera persona, animación del monstruo =================
+const skyG=new THREE.Group();scene.add(skyG);
+{const cv=document.createElement('canvas');cv.width=2;cv.height=256;const g=cv.getContext('2d'),gr=g.createLinearGradient(0,0,0,256);
+ gr.addColorStop(0,'#2f6fc4');gr.addColorStop(.5,'#8fc2ee');gr.addColorStop(.85,'#f1e4c6');gr.addColorStop(1,'#d8e2e8');g.fillStyle=gr;g.fillRect(0,0,2,256);
+ skyG.add(new THREE.Mesh(new THREE.SphereGeometry(250,24,16),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),side:THREE.BackSide,fog:false,depthWrite:false})));
+ const cm=new THREE.MeshBasicMaterial({color:0xffffff,fog:false,transparent:true,opacity:.9});
+ for(let i=0;i<16;i++){const a=i*2.4,r=110+(i*37)%90,c=new THREE.Mesh(new THREE.SphereGeometry(1,8,6),cm);c.scale.set(18+(i*13)%26,4+(i*7)%4,9+(i*5)%10);c.position.set(Math.cos(a)*r,55+(i*11)%35,Math.sin(a)*r);skyG.add(c);}}
+// partículas (chispas, polvo, explosiones)
+const parts=[],_pg=new THREE.BoxGeometry(.18,.18,.18),_pm={};
+function burst(x,y,z,col,n,sp){const mat=_pm[col]||(_pm[col]=new THREE.MeshBasicMaterial({color:col}));
+ for(let i=0;i<n&&parts.length<200;i++){const m=new THREE.Mesh(_pg,mat),a=Math.random()*6.28,s=sp*(.3+Math.random()*.8);m.position.set(x,y,z);scene.add(m);
+  parts.push({m,vx:Math.cos(a)*s,vy:(.3+Math.random()*.9)*sp*.8,vz:Math.sin(a)*s,life:.45+Math.random()*.45});}}
+// arma en primera persona (cada una con su forma) + fogonazo
+scene.add(cam);const gun=new THREE.Group();cam.add(gun);gun.position.set(.3,-.28,-.55);
+const gm=(w,h,d,c,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:c,depthTest:false}));m.position.set(x,y,z);m.renderOrder=20;return m;};
+const GV={pistol:new THREE.Group(),shotgun:new THREE.Group(),rifle:new THREE.Group()};
+GV.pistol.add(gm(.07,.1,.28,0x3a3f47,0,0,0),gm(.06,.14,.08,0x2a2d33,0,-.1,.08),gm(.045,.045,.1,0x9aa3ad,0,.02,-.17));
+GV.shotgun.add(gm(.09,.1,.5,0x6b4526,0,0,.05),gm(.05,.05,.5,0x8a929c,0,.04,-.35),gm(.06,.06,.3,0x8a929c,0,-.02,-.28));
+GV.rifle.add(gm(.08,.12,.6,0x2f4a36,0,0,0),gm(.04,.04,.4,0x20242a,0,.03,-.45),gm(.06,.14,.1,0x20242a,0,-.12,.1),gm(.05,.08,.06,0x20242a,0,.1,-.05));
+for(const k in GV){const mz=new THREE.Mesh(new THREE.BoxGeometry(.12,.12,.12),new THREE.MeshBasicMaterial({color:0xffe066,depthTest:false}));mz.position.set(0,.02,k==='pistol'?-.3:-.62);mz.renderOrder=21;mz.visible=false;GV[k].mz=mz;GV[k].add(mz);GV[k].visible=false;gun.add(GV[k]);}
+const flashL=new THREE.PointLight(0xffcc66,0,18);cam.add(flashL);flashL.position.set(0,0,-1);
+let muzT=0,dustT=0;
+function fxUpdate(dt){
+ skyG.position.copy(cam.position);updZone();hookVis(dt);
+ for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.life-=dt;p.vy-=18*dt;p.m.position.x+=p.vx*dt;p.m.position.y=Math.max(0,p.m.position.y+p.vy*dt);p.m.position.z+=p.vz*dt;p.m.scale.setScalar(Math.max(.01,Math.min(1,p.life/.4)));
+  if(p.life<=0){scene.remove(p.m);parts.splice(i,1);}}
+ muzT-=dt;flashL.intensity=muzT>0?2.5:0;
+ const spd=Math.hypot(vx,vz),wk=grounded&&!sliding?Math.min(1,spd/10):0;
+ gun.visible=!!weapon&&active&&!over;for(const k in GV)GV[k].visible=(k===weapon);if(weapon)GV[weapon].mz.visible=muzT>0;
+ gun.position.set(.3+Math.sin(T*8)*.012*wk,-.28+Math.abs(Math.sin(T*8))*.015*wk+(sliding?-.1:0)+(dashT>0?-.05:0),-.55+recoil*1.4);
+ gun.rotation.x=recoil*2+(sliding?.18:0);gun.rotation.z=sliding?-.12:0;
+ dustT-=dt;if(active&&!over&&dustT<=0){dustT=.04;const bx=P.x+Math.sin(yaw),bz=P.z+Math.cos(yaw);
+  if(sliding)burst(bx,P.y+.1,bz,0xcfc8b8,2,2.5);if(dashT>0)burst(bx,P.y+1,bz,0x9fe3ff,3,1.5);}}   // polvo al deslizarte, estela al esquivar
+// animación del monstruo: piernas, brazos que se levantan al atacar, ojos brillantes
+function animMon(dt){const c=mon.g.children,moving=mon.state==='CHASE'||mon.state==='LUNGE',sp=mon.ph2?14:10,sw=moving?Math.sin(T*sp):0;
+ c[6].position.z=sw*.55;c[7].position.z=-sw*.55;c[6].rotation.x=sw*.5;c[7].rotation.x=-sw*.5;
+ const up=(mon.state==='SWING_W'||mon.state==='LUNGE_W'||mon.state==='THROW_W'||mon.state==='SLAM_W'||mon.state==='ROAR')?-1.25:mon.state==='LUNGE'?-.3:moving?Math.sin(T*sp+3)*.35:0;
+ for(const i of[8,9])c[i].rotation.x+=(up-c[i].rotation.x)*Math.min(1,dt*14);
+ mon.g.position.y=mon.y+(moving?Math.abs(Math.sin(T*sp))*.3:0);c[1].position.y=4.8+Math.sin(T*2)*.05;
+ const e=mon.ph2?0xff2200:0xffe14a;for(const i of[2,3]){c[i].material.color.setHex(e);c[i].material.emissive.setHex(e);}}
+
+// ================= GANCHO =================
+const HOOK={RANGE:55,SPEED:28,ACC:9,CD:1,MAXT:1.6,STOP:1.3};   // alcance, velocidad de tirón, suavidad, enfriamiento, duración máx, distancia a la que suelta
+const hook={on:false,x:0,y:0,z:0,ax:0,ay:0,az:0,t:0,best:1e9,stuck:0,cd:0,
+ line:new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0xeaf6ff})),
+ head:new THREE.Mesh(new THREE.OctahedronGeometry(.35),new THREE.MeshBasicMaterial({color:0xffffff}))};
+hook.line.frustumCulled=false;hook.line.visible=hook.head.visible=false;scene.add(hook.line,hook.head);
+function hookToggle(){
+ if(hook.on){hookRelease();return;}
+ if(hook.cd>0||over)return;
+ cam.updateMatrixWorld();rc.setFromCamera({x:0,y:0},cam);rc.far=HOOK.RANGE;
+ const h=rc.intersectObjects(solids).find(o=>o.object!==floor);
+ if(!h){say('Sin punto de agarre');hook.cd=.3;Snd.click();return;}
+ const n=h.face?h.face.normal.clone().transformDirection(h.object.matrixWorld):new THREE.Vector3(0,1,0);
+ hook.ax=h.point.x;hook.ay=h.point.y;hook.az=h.point.z;
+ hook.x=h.point.x+n.x*1.1;hook.y=h.point.y+n.y*1.1;hook.z=h.point.z+n.z*1.1;   // objetivo: el centro de tu cuerpo, pegado a la superficie
+ hook.on=true;hook.t=0;hook.best=1e9;hook.stuck=0;dashT=0;sliding=false;grounded=false;vy=Math.max(vy,3);fov+=6;
+ hook.line.visible=hook.head.visible=true;hook.head.position.set(hook.ax,hook.ay,hook.az);Snd.hook();}
+function hookRelease(){if(!hook.on)return;hook.on=false;hook.cd=HOOK.CD;hook.line.visible=hook.head.visible=false;Snd.unhook();}
+const _hR=new THREE.Vector3(),_hF=new THREE.Vector3(),_hD=new THREE.Vector3();
+function hookVis(dt){hook.cd=Math.max(0,hook.cd-dt);if(!hook.on)return;
+ _hR.set(1,0,0).applyQuaternion(cam.quaternion);_hF.set(0,0,-1).applyQuaternion(cam.quaternion);_hD.set(0,-1,0).applyQuaternion(cam.quaternion);
+ const a=hook.line.geometry.attributes.position;
+ a.setXYZ(0,cam.position.x+_hR.x*.28+_hD.x*.22+_hF.x*.6,cam.position.y+_hR.y*.28+_hD.y*.22+_hF.y*.6,cam.position.z+_hR.z*.28+_hD.z*.22+_hF.z*.6);
+ a.setXYZ(1,hook.ax,hook.ay,hook.az);a.needsUpdate=true;hook.head.rotation.y+=dt*8;}
+
+// ================= COLISIÓN (campo de alturas) =================
+function rampH(x,z,m){let best=-1;for(const r of ramps){const dx=x-r.x,dz=z-r.z,lx=dx*r.c-dz*r.s,lz=dx*r.s+dz*r.c;
+ if(Math.abs(lx)<=r.w/2+m&&Math.abs(lz)<=r.l/2+m){const h=r.h*clamp((lz+r.l/2)/r.l,0,1);if(h>best)best=h;}}return best;}
+function groundAt(x,z,m){let h=0;for(const b of boxes)if(Math.abs(x-b.x)<b.w/2+m&&Math.abs(z-b.z)<b.d/2+m&&b.h>h)h=b.h;const r=rampH(x,z,m);return r>h?r:h;}
+function slope(x,z){const e=.3,a=rampH(x+e,z,0),b=rampH(x-e,z,0),c=rampH(x,z+e,0),d=rampH(x,z-e,0);return(a<0||b<0||c<0||d<0)?[0,0]:[(a-b)/(2*e),(c-d)/(2*e)];}
+
+// ================= ESTADO =================
+const P={x:0,y:0,z:-38},K={};let vx=0,vz=0,vy=0,yaw=Math.PI,pitch=0,T=0,grounded=true,coyote=0,jumpBuf=0;
+let sliding=false,dashT=0,dashCd=0,dashDX=0,dashDZ=0,dashSide=0,pend=null,roll=0,fov=CFG.FOV,eye=CFG.EYE,bob=0,dip=0,state='RUN';
+const lastTap={};let airJumps=1,wallCd=0;
+const DIRS={KeyW:[1,0],KeyS:[-1,0],KeyA:[0,-1],KeyD:[0,1]};
+addEventListener('keydown',e=>{if(e.repeat)return;K[e.code]=1;
+ if(e.code==='Space'){jumpBuf=CFG.BUFFER;e.preventDefault();}
+ if(e.code==='KeyQ')pend='input';
+ if(DIRS[e.code]){if(T-(lastTap[e.code]||-9)<CFG.DOUBLE_TAP)pend=DIRS[e.code];lastTap[e.code]=T;}});
+addEventListener('keyup',e=>K[e.code]=0);
+// --- DIAGNÓSTICO: registra en consola cada tecla detectada ---
+addEventListener('keydown',e=>{console.log('[TECLA] keydown -> code:',e.code,'| key:',e.key,'| juego activo:',active);if(!active&&['KeyW','KeyA','KeyS','KeyD','Space','Enter'].includes(e.code))activate();},true);
+addEventListener('keyup',e=>console.log('[TECLA] keyup   -> code:',e.code),true);
+addEventListener('click',()=>console.log('[CLIC] detectado | juego activo:',active,'| mouse capturado:',locked()),true);
+console.log('[DIAGNÓSTICO] listeners de teclado listos. Haz clic en la pantalla y pulsa teclas.');
+const locked=()=>document.pointerLockElement===R.domElement;
+let active=false,dragging=false;
+let wasLocked=false;
+function activate(){if(over&&performance.now()-overAt<1200)return;if(over)resetGame();window.focus();active=true;Snd.init();$('ov').style.display='none';try{const p=R.domElement.requestPointerLock();if(p&&p.catch)p.catch(e=>console.log('[LOCK] sin captura de mouse:',e&&e.message));}catch(e){console.log('[LOCK] fallo:',e);}console.log('[JUEGO] activado');}
+$('ov').onclick=activate;
+document.addEventListener('pointerlockchange',()=>{console.log('[LOCK] cambio, capturado:',locked());if(locked())wasLocked=true;else if(wasLocked)pause();});
+// Pausa: libera el mouse y vuelve a mostrar el cursor
+function pause(){hookRelease();Snd.silence();active=false;wasLocked=false;dragging=false;firing=false;try{document.exitPointerLock();}catch(e){}$('ov').style.display='flex';console.log('[JUEGO] en pausa, mouse liberado');}
+addEventListener('keydown',e=>{if(active&&(e.code==='Escape'||e.code==='KeyP'))pause();});
+addEventListener('blur',()=>{if(active)pause();});
+addEventListener('pagehide',()=>{try{document.exitPointerLock();}catch(e){}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&active)pause();});
+document.addEventListener('pointerlockerror',()=>console.log('[LOCK] error: el navegador no permitió capturar el mouse (el juego sigue activo)'));
+addEventListener('mousemove',e=>{if(!active||!(locked()||dragging))return;const mx=e.movementX||0,my=e.movementY||0;
+ if(Math.abs(mx)>250||Math.abs(my)>250)return;   // descarta saltos falsos de movimiento que a veces envía el navegador
+ yaw-=mx*CFG.SENS;pitch=clamp(pitch-my*CFG.SENS,-1.5,1.5);});
+addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('mousedown',e=>{if(!active)return;if(e.button===2){hookToggle();return;}if(locked()){firing=true;fire();}else dragging=true;});
+addEventListener('mouseup',()=>{dragging=false;firing=false;});
+addEventListener('keydown',e=>{if(!active)return;if(e.code==='KeyF')fire();if(e.code==='KeyE')pulse();if(e.code==='KeyR'&&!e.repeat)hookToggle();
+ const wn={Digit1:'pistol',Digit2:'shotgun',Digit3:'rifle'}[e.code];if(wn&&owned[wn]){weapon=wn;Snd.switch();say(WEAPONS[wn].name);}
+ if(e.code==='KeyM')Snd.toggle();});
+
+// ================= DISPARO (solo trazador) =================
+const rc=new THREE.Raycaster(),tracers=[];
+function shootRay(sp,dmg){cam.updateMatrixWorld();rc.setFromCamera({x:(Math.random()-.5)*sp,y:(Math.random()-.5)*sp},cam);rc.far=120;
+ const dir=rc.ray.direction.clone(),wh=rc.intersectObjects(solids)[0],mh=mon.alive?rc.intersectObject(mon.g,true)[0]:null,hit=(mh&&(!wh||mh.distance<wh.distance))?mh:wh,_d=(hit&&hit===mh)?hurtMon(dmg):0,_b=hit?burst(hit.point.x,hit.point.y,hit.point.z,hit===mh?0xc070ff:0xffe066,hit===mh?8:5,hit===mh?6:4):0,end=hit?hit.point:cam.position.clone().addScaledVector(dir,80);
+ const right=new THREE.Vector3(1,0,0).applyQuaternion(cam.quaternion),start=cam.position.clone().addScaledVector(right,.3).addScaledVector(dir,.6);start.y-=.25;
+ const g=new THREE.Group();g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([start,end]),new THREE.LineBasicMaterial({color:0xffee55})));
+ if(hit){const s=new THREE.Mesh(new THREE.SphereGeometry(.15,6,4),new THREE.MeshBasicMaterial({color:0xffee55}));s.position.copy(end);g.add(s);}
+ scene.add(g);tracers.push({g,l:.14});}
+
+// ================= ACTUALIZACIÓN =================
+function update(dt){
+ T+=dt;dashCd=Math.max(0,dashCd-dt);jumpBuf=Math.max(0,jumpBuf-dt);
+ const fw=(K.KeyW?1:0)-(K.KeyS?1:0),sd=(K.KeyD?1:0)-(K.KeyA?1:0),sy=Math.sin(yaw),cy=Math.cos(yaw);
+ const fX=-sy,fZ=-cy,rX=cy,rZ=-sy;
+ let wx=fX*fw+rX*sd,wz=fZ*fw+rZ*sd;const wl=Math.hypot(wx,wz);if(wl>0){wx/=wl;wz/=wl;}
+ let speed=Math.hypot(vx,vz);
+
+ // --- esquiva ---
+ if(pend){let f,s;if(pend==='input'){f=fw;s=sd;if(!f&&!s)f=1;}else[f,s]=pend;pend=null;
+  if(dashCd<=0&&dashT<=0){let dx=fX*f+rX*s,dz=fZ*f+rZ*s;const l=Math.hypot(dx,dz)||1;dashDX=dx/l;dashDZ=dz/l;dashT=CFG.DASH_TIME;dashCd=CFG.DASH_CD;Snd.dash();sliding=false;dashSide=dashDX*rX+dashDZ*rZ;}}
+
+ // --- deslizamiento ---
+ const slideKey=K.KeyC||K.ControlLeft||K.ControlRight;
+ if(!sliding&&slideKey&&grounded&&dashT<=0&&speed>=CFG.SLIDE_MIN){sliding=true;Snd.slideStart();const ns=Math.max(speed,Math.min(CFG.SLIDE_BOOST,speed*1.3));vx*=ns/speed;vz*=ns/speed;speed=ns;}
+ if(sliding&&(!slideKey||!grounded||speed<CFG.SLIDE_END))sliding=false;
+
+ // --- velocidad horizontal ---
+ if(dashT>0){vx=dashDX*CFG.DASH_SPEED;vz=dashDZ*CFG.DASH_SPEED;dashT-=dt;
+  if(dashT<=0){vx=dashDX*CFG.DASH_END;vz=dashDZ*CFG.DASH_END;}}
+ else if(sliding){
+  const ns=Math.max(0,speed-CFG.SLIDE_FRIC*dt);if(speed>0){vx*=ns/speed;vz*=ns/speed;}
+  vx+=wx*CFG.SLIDE_STEER*dt;vz+=wz*CFG.SLIDE_STEER*dt;                     // dirección limitada
+  const s2=Math.hypot(vx,vz);if(s2>0&&ns>0){vx*=ns/s2;vz*=ns/s2;}
+  const [gx,gz]=slope(P.x,P.z);vx-=gx*CFG.SLIDE_SLOPE*dt;vz-=gz*CFG.SLIDE_SLOPE*dt; // baja más rápido
+ }else if(grounded){
+  const ts=(K.ShiftLeft||K.ShiftRight)?CFG.SPRINT:CFG.WALK,tx=wx*ts,tz=wz*ts;
+  const rate=wl>0?(speed>ts+.5?CFG.OVER_DECEL:CFG.GROUND_ACC):(speed>CFG.SPRINT+.5?CFG.OVER_DECEL:CFG.GROUND_FRIC);
+  const dx=tx-vx,dz=tz-vz,dl=Math.hypot(dx,dz),st=rate*dt;if(dl<=st){vx=tx;vz=tz;}else{vx+=dx/dl*st;vz+=dz/dl*st;}
+ }else if(wl>0){                                                              // control aéreo
+  const add=clamp(CFG.AIR_CAP-(vx*wx+vz*wz),0,CFG.AIR_ACC*dt);vx+=wx*add;vz+=wz*add;}
+
+ // --- salto (coyote + buffer) ---
+ coyote=grounded?CFG.COYOTE:Math.max(0,coyote-dt);
+ if(hook.on){                                                                 // el gancho tira de ti hacia el punto de agarre
+  const tx=hook.x-P.x,ty=hook.y-(P.y+1),tz=hook.z-P.z,d=Math.hypot(tx,ty,tz)||1;
+  hook.t+=dt;if(d>hook.best-.04)hook.stuck+=dt;else{hook.stuck=0;hook.best=d;}
+  if(d<HOOK.STOP||hook.t>HOOK.MAXT||hook.stuck>.4||jumpBuf>0){
+   if(jumpBuf>0){vy=Math.max(vy,0)+6;jumpBuf=0;airJumps=1;fov+=5;}else if(d<HOOK.STOP){vy*=.55;vx*=.6;vz*=.6;}   // Espacio: salto de gancho; al llegar: impulso para trepar
+   hookRelease();}
+  else{const k=Math.min(1,dt*HOOK.ACC),s=HOOK.SPEED;vx+=(tx/d*s-vx)*k;vy+=(ty/d*s-vy)*k;vz+=(tz/d*s-vz)*k;grounded=false;sliding=false;}
+ }
+ if(grounded)airJumps=1;
+ if(jumpBuf>0&&coyote>0){Snd.jump();vy=CFG.JUMP;grounded=false;coyote=0;jumpBuf=0;sliding=false;}
+ else if(jumpBuf>0&&!grounded&&wallCd<=0){                                   // salto en pared o doble salto
+  let nx=0,nz=0;for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]])if(groundAt(P.x+a*.75,P.z+b*.75,.1)-P.y>1.2){nx=a;nz=b;break;}
+  if(nx||nz){let ax=-nx+fX*.5,az=-nz+fZ*.5;const l=Math.hypot(ax,az)||1,s=Math.max(speed,12);vx=ax/l*s;vz=az/l*s;vy=CFG.JUMP*.95;wallCd=.25;jumpBuf=0;airJumps=1;fov+=8;Snd.wall();say('SALTO EN PARED');}
+  else if(airJumps>0){vy=CFG.JUMP*.85;airJumps--;jumpBuf=0;fov+=5;Snd.djump();if(wl>0){const s=Math.max(speed,8);vx=vx*.4+wx*s*.6;vz=vz*.4+wz*s*.6;}}   // doble salto con impulso hacia donde te mueves
+ }
+ wallCd=Math.max(0,wallCd-dt);
+
+ // --- mover con colisión ---
+ let nx=P.x+vx*dt;if(groundAt(nx,P.z,CFG.R)-P.y>CFG.STEP){vx=0;nx=P.x;}P.x=nx;
+ let nz=P.z+vz*dt;if(groundAt(P.x,nz,CFG.R)-P.y>CFG.STEP){vz=0;nz=P.z;}P.z=nz;
+
+ // --- vertical ---
+ const g=groundAt(P.x,P.z,.2);
+ if(grounded){if(g>=P.y-CFG.SNAP&&vy<=0)P.y=g;else grounded=false;}
+ if(!grounded){vy-=CFG.GRAV*(dashT>0?.25:1)*(hook.on?0:1)*dt;P.y+=vy*dt;
+  if(P.y<=g&&vy<=0){Snd.land(-vy);if(vy<-6)burst(P.x,P.y+.1,P.z,0xcfc8b8,10,4);dip=clamp(-vy*.012,0,.25);P.y=g;vy=0;grounded=true;}}
+
+ state=dashT>0?'DODGE':sliding?'SLIDE':!grounded?'AIR':'RUN';
+}
+
+function camera(dt){
+ if(active&&!over){const lk=2.4*dt;yaw+=((K.KeyJ?1:0)-(K.KeyL?1:0))*lk;pitch=clamp(pitch+((K.KeyI?1:0)-(K.KeyK?1:0))*lk,-1.5,1.5);}   // mirar con el teclado: I arriba, K abajo, J izquierda, L derecha
+ const spd=Math.hypot(vx,vz),sy=Math.sin(yaw),cy=Math.cos(yaw),k=Math.min(1,dt*10);
+ fov+=(CFG.FOV+clamp((spd-8)/12,0,1)*(CFG.FOV_MAX-CFG.FOV)+(dashT>0?CFG.FOV_DASH:0)-fov)*Math.min(1,dt*8);
+ cam.fov=fov;cam.updateProjectionMatrix();
+ eye+=((sliding?CFG.EYE_SLIDE:CFG.EYE)-eye)*k;dip=Math.max(0,dip-dt*.9);
+ const rv=(vx*cy-vz*sy)/CFG.SPRINT;                                        // velocidad lateral
+ const rt=-clamp(rv,-1.3,1.3)*CFG.TILT*3-(dashT>0?dashSide*CFG.DASH_TILT:0)+(sliding?.04:0);roll+=(rt-roll)*k;
+ let by=0;if(grounded&&!sliding&&spd>1){bob+=spd*dt*.9;by=Math.sin(bob*2)*CFG.BOB*Math.min(1,spd/CFG.SPRINT);}
+ recoil=Math.max(0,recoil-recoil*dt*8-dt*.02);   // el retroceso se recupera solo
+ cam.position.set(P.x,P.y+eye+by-dip,P.z);cam.rotation.set(clamp(pitch+recoil,-1.55,1.55),yaw,roll);
+}
+
+let last=performance.now();
+(function loop(now){requestAnimationFrame(loop);const rdt=Math.min(.033,(now-last)/1000),dt=rdt*timeScale;last=now;if(slowT>0){slowT-=rdt;timeScale=.4;}else timeScale=1;
+ if(active&&!over){update(dt);gear(dt);monster(dt);}camera(rdt);fxUpdate(rdt);Snd.frame(rdt);$('slow').style.opacity=slowT>0?1:0;pdCd=Math.max(0,pdCd-rdt);
+ for(let i=tracers.length-1;i>=0;i--){const t=tracers[i];t.l-=dt;if(t.l<=0){scene.remove(t.g);t.g.traverse(o=>{o.geometry&&o.geometry.dispose();});tracers.splice(i,1);}}
+ $('sp').textContent=Math.round(Math.hypot(vx,vz)*3.6)+' km/h';$('st').textContent=state+(active?'':' (haz clic para activar)');
+ $('dbg').textContent='activo:'+active+' | mouse capturado:'+locked()+' | teclas:'+Object.keys(K).filter(k=>K[k]).join(',')+' | pos:'+P.x.toFixed(1)+','+P.z.toFixed(1);$('cdi').style.width=(1-dashCd/CFG.DASH_CD)*100+'%';
+ R.render(scene,cam);})(last);
+</script></body></html>
